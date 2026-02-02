@@ -1,148 +1,245 @@
-import pytest
-from unittest.mock import Mock, patch
+from datetime import datetime
+from unittest.mock import MagicMock, patch
+
 from airopa_automation.agents import (
-    ScraperAgent, 
+    Article,
     CategoryClassifierAgent,
-    QualityScoreAgent,
     ContentGeneratorAgent,
-    GitCommitAgent
-)
-from airopa_automation.config import (
-    ScraperConfig,
-    CategoryClassifierConfig,
-    QualityScoreConfig,
-    ContentGeneratorConfig,
-    GitConfig
+    QualityScoreAgent,
+    ScraperAgent,
 )
 
 
-def test_scraper_agent_rss():
-    """Test RSS scraping functionality"""
-    config = ScraperConfig(
-        rss_feeds=[],
-        web_sources=[],
-        user_agent="Test Agent",
-        timeout=10
-    )
-    scraper = ScraperAgent(config)
-    
-    # Mock feedparser
-    with patch('feedparser.parse') as mock_parse:
-        mock_parse.return_value.entries = [
-            Mock(title="Test Title", link="http://test.com", description="Test content")
-        ]
-        
-        results = scraper.scrape_rss("http://test-rss.com")
-        assert len(results) == 1
-        assert results[0]['title'] == "Test Title"
-        assert results[0]['url'] == "http://test.com"
+class TestArticle:
+    """Test Article model"""
+
+    def test_article_creation(self):
+        """Test creating an Article instance"""
+        article = Article(
+            title="Test Article",
+            url="http://example.com/article",
+            source="Test Source",
+            content="This is the article content.",
+        )
+
+        assert article.title == "Test Article"
+        assert article.url == "http://example.com/article"
+        assert article.source == "Test Source"
+        assert article.content == "This is the article content."
+        assert article.category == ""
+        assert article.quality_score == 0.0
+
+    def test_article_generate_hash(self):
+        """Test Article hash generation"""
+        article = Article(
+            title="Test Article",
+            url="http://example.com/article",
+            source="Test Source",
+            content="Content",
+        )
+
+        hash1 = article.generate_hash()
+        assert len(hash1) == 64  # SHA256 hex digest length
+
+        # Same article should generate same hash
+        article2 = Article(
+            title="Test Article",
+            url="http://example.com/article",
+            source="Test Source",
+            content="Different content",
+        )
+        hash2 = article2.generate_hash()
+        assert hash1 == hash2  # Hash is based on title, url, source
+
+    def test_article_with_optional_fields(self):
+        """Test Article with optional fields populated"""
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Source",
+            content="Content",
+            summary="Summary text",
+            published_date=datetime(2024, 1, 15),
+            category="policy",
+            country="France",
+            quality_score=0.8,
+        )
+
+        assert article.summary == "Summary text"
+        assert article.published_date == datetime(2024, 1, 15)
+        assert article.category == "policy"
+        assert article.country == "France"
+        assert article.quality_score == 0.8
 
 
-def test_scraper_agent_web():
-    """Test web scraping functionality"""
-    config = ScraperConfig(
-        rss_feeds=[],
-        web_sources=[],
-        user_agent="Test Agent",
-        timeout=10
-    )
-    scraper = ScraperAgent(config)
-    
-    # Mock newspaper Article
-    with patch('airopa_automation.agents.Article') as mock_article:
-        mock_instance = Mock()
-        mock_instance.title = "Test Article"
-        mock_instance.text = "Test article content"
-        mock_article.return_value = mock_instance
-        
-        result = scraper.scrape_web("http://test.com")
-        assert result['title'] == "Test Article"
-        assert result['content'] == "Test article content"
+class TestCategoryClassifierAgent:
+    """Test CategoryClassifierAgent"""
+
+    def test_classify_startup_category(self):
+        """Test classification of startup-related content"""
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="New AI Startup Raises Funding",
+            url="http://test.com",
+            source="Test",
+            content="A new startup company has received investment.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "startups"
+
+    def test_classify_policy_category(self):
+        """Test classification of policy-related content"""
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="New AI Regulation Proposed",
+            url="http://test.com",
+            source="Test",
+            content="The government has proposed new policy for AI.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "policy"
+
+    def test_classify_country(self):
+        """Test country classification"""
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="AI Development in France",
+            url="http://test.com",
+            source="Test",
+            content="France is leading AI innovation.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.country == "France"
+
+    def test_classify_default_category(self):
+        """Test default category for unclassified content"""
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Random Title",
+            url="http://test.com",
+            source="Test",
+            content="Some random content without keywords.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "stories"
 
 
-def test_category_classifier():
-    """Test content classification"""
-    config = CategoryClassifierConfig(
-        categories=["policy", "innovation", "research"]
-    )
-    classifier = CategoryClassifierAgent(config)
-    
-    # Test with matching content
-    categories = classifier.classify("This is about AI policy and innovation")
-    assert "policy" in categories
-    assert "innovation" in categories
-    
-    # Test with no matches
-    categories = classifier.classify("Random content without keywords")
-    assert categories == ["general"]
+class TestQualityScoreAgent:
+    """Test QualityScoreAgent"""
+
+    def test_quality_score_short_content(self):
+        """Test quality score for short content"""
+        scorer = QualityScoreAgent()
+        article = Article(
+            title="Short",
+            url="http://test.com",
+            source="Test",
+            content="Very short content.",
+        )
+
+        result = scorer.assess_quality(article)
+
+        assert result.quality_score < 0.5
+
+    def test_quality_score_good_content(self):
+        """Test quality score for good content"""
+        scorer = QualityScoreAgent()
+        long_content = " ".join(["word"] * 600)  # >500 words
+        article = Article(
+            title="A Good Article Title Here",
+            url="http://test.com",
+            source="Test",
+            content=long_content,
+            category="policy",
+            country="Europe",
+        )
+
+        result = scorer.assess_quality(article)
+
+        assert result.quality_score > 0.5
+
+    def test_quality_score_max_is_one(self):
+        """Test that quality score doesn't exceed 1.0"""
+        scorer = QualityScoreAgent()
+        article = Article(
+            title="Excellent Article With Many Words",
+            url="http://test.com",
+            source="europa.eu",  # credible source
+            content=" ".join(["word"] * 1000),
+            category="policy",
+            country="France",
+        )
+
+        result = scorer.assess_quality(article)
+
+        assert result.quality_score <= 1.0
 
 
-def test_quality_score_agent():
-    """Test quality scoring"""
-    config = QualityScoreConfig(
-        min_length=100,
-        max_length=1000,
-        quality_threshold=0.5
-    )
-    scorer = QualityScoreAgent(config)
-    
-    # Test with good content
-    good_content = "AI policy in Europe is evolving. Regulation and innovation are key factors. " * 10
-    score = scorer.calculate_score(good_content)
-    assert 0 <= score <= 1.0
-    
-    # Test with short content
-    short_content = "Short"
-    score = scorer.calculate_score(short_content)
-    assert score < 0.5
+class TestScraperAgent:
+    """Test ScraperAgent"""
+
+    def test_scraper_init(self):
+        """Test ScraperAgent initialization"""
+        scraper = ScraperAgent()
+
+        assert scraper.session is not None
+        assert "User-Agent" in scraper.session.headers
+
+    @patch("airopa_automation.agents.feedparser.parse")
+    def test_scrape_rss_feeds_empty(self, mock_parse):
+        """Test RSS scraping with empty config"""
+        mock_parse.return_value = MagicMock(entries=[])
+
+        with patch("airopa_automation.agents.config") as mock_config:
+            mock_config.scraper.rss_feeds = []
+            mock_config.scraper.user_agent = "Test"
+
+            scraper = ScraperAgent()
+            articles = scraper.scrape_rss_feeds()
+
+            assert articles == []
 
 
-def test_content_generator():
-    """Test content generation"""
-    config = ContentGeneratorConfig(
-        output_dir="./test_output",
-        template="{title}.md",
-        frontmatter_template="""---
-title: {title}
-date: {date}
-categories: {categories}
-tags: {tags}
----
-"""
-    )
-    generator = ContentGeneratorAgent(config)
-    
-    # Test content generation
-    item = {
-        'title': "Test Article",
-        'content': "Test content here"
-    }
-    categories = ["policy", "innovation"]
-    
-    content = generator.generate_content(item, categories)
-    assert "Test Article" in content
-    assert "policy" in content
-    assert "innovation" in content
-    assert "Test content here" in content
+class TestContentGeneratorAgent:
+    """Test ContentGeneratorAgent"""
 
+    def test_content_generator_init(self):
+        """Test ContentGeneratorAgent initialization"""
+        with patch("airopa_automation.agents.config") as mock_config:
+            mock_config.content.output_dir = "/tmp/test_output"
 
-def test_git_commit_agent():
-    """Test git commit functionality"""
-    config = GitConfig(
-        repo_path="./test_repo",
-        commit_message="Test commit",
-        author_name="Test Author",
-        author_email="test@example.com"
-    )
-    
-    # Mock git repo
-    with patch('airopa_automation.agents.Repo') as mock_repo:
-        mock_instance = Mock()
-        mock_repo.return_value = mock_instance
-        
-        agent = GitCommitAgent(config)
-        agent.commit_changes("Custom test message")
-        
-        # Verify git operations were called
-        mock_instance.git.add.assert_called_once_with('.')
-        mock_instance.index.commit.assert_called_once()
+            generator = ContentGeneratorAgent()
+
+            assert generator.output_dir.exists()
+
+    def test_generate_frontmatter(self):
+        """Test frontmatter generation"""
+        with patch("airopa_automation.agents.config") as mock_config:
+            mock_config.content.output_dir = "/tmp/test_output"
+            mock_config.content.default_author = "Test Author"
+            mock_config.content.default_cover_image = "/test.jpg"
+
+            generator = ContentGeneratorAgent()
+            article = Article(
+                title="Test Article",
+                url="http://test.com",
+                source="Test Source",
+                content="Content",
+                category="policy",
+                published_date=datetime(2024, 1, 15),
+            )
+
+            frontmatter = generator._generate_frontmatter(article)
+
+            assert "title:" in frontmatter
+            assert "Test Article" in frontmatter
+            assert "policy" in frontmatter
+            assert "---" in frontmatter

@@ -1,117 +1,107 @@
-import pytest
-from pydantic import ValidationError
 from airopa_automation.config import (
-    ScraperConfig,
-    CategoryClassifierConfig,
-    QualityScoreConfig,
-    ContentGeneratorConfig,
+    Config,
+    ContentConfig,
+    DatabaseConfig,
     GitConfig,
-    AIropaConfig
+    ScraperConfig,
 )
 
 
-def test_scraper_config():
-    """Test ScraperConfig validation"""
+def test_scraper_config_defaults():
+    """Test ScraperConfig default values"""
+    config = ScraperConfig()
+
+    assert len(config.rss_feeds) > 0
+    assert len(config.web_sources) > 0
+    assert config.max_articles_per_source == 10
+    assert config.rate_limit_delay == 1.0
+    assert "AIropaBot" in config.user_agent
+
+
+def test_scraper_config_custom():
+    """Test ScraperConfig with custom values"""
     config = ScraperConfig(
         rss_feeds=["http://test.com/rss"],
         web_sources=["http://test.com"],
+        max_articles_per_source=5,
+        rate_limit_delay=2.0,
         user_agent="Test Agent/1.0",
-        timeout=60
     )
-    
+
     assert config.rss_feeds == ["http://test.com/rss"]
     assert config.web_sources == ["http://test.com"]
+    assert config.max_articles_per_source == 5
+    assert config.rate_limit_delay == 2.0
     assert config.user_agent == "Test Agent/1.0"
-    assert config.timeout == 60
 
 
-def test_category_classifier_config():
-    """Test CategoryClassifierConfig validation"""
-    config = CategoryClassifierConfig(
-        categories=["policy", "regulation", "innovation"]
-    )
-    
-    assert config.categories == ["policy", "regulation", "innovation"]
+def test_database_config_defaults():
+    """Test DatabaseConfig default values"""
+    config = DatabaseConfig()
+
+    assert config.db_path == "database/airopa.db"
+    assert config.max_connections == 5
+    assert config.timeout == 10.0
 
 
-def test_quality_score_config():
-    """Test QualityScoreConfig validation"""
-    config = QualityScoreConfig(
-        min_length=200,
-        max_length=2000,
-        quality_threshold=0.8
-    )
-    
-    assert config.min_length == 200
-    assert config.max_length == 2000
-    assert config.quality_threshold == 0.8
+def test_content_config_defaults():
+    """Test ContentConfig default values"""
+    config = ContentConfig()
+
+    assert "content/post" in config.output_dir
+    assert config.default_author == "AIropa Bot"
+    assert config.default_cover_image != ""
 
 
-def test_content_generator_config():
-    """Test ContentGeneratorConfig validation"""
-    config = ContentGeneratorConfig(
-        output_dir="./output",
-        template="{title}.md",
-        frontmatter_template="title: {title}"
-    )
-    
-    assert config.output_dir == "./output"
-    assert config.template == "{title}.md"
-    assert config.frontmatter_template == "title: {title}"
+def test_git_config_defaults():
+    """Test GitConfig default values"""
+    config = GitConfig()
+
+    assert config.repo_path == ".."
+    assert "content" in config.commit_message.lower()
+    assert config.author_name == "AIropa Bot"
+    assert "@" in config.author_email
 
 
-def test_git_config():
-    """Test GitConfig validation"""
+def test_git_config_custom():
+    """Test GitConfig with custom values"""
     config = GitConfig(
         repo_path="./repo",
         commit_message="Test commit message",
         author_name="Test Author",
-        author_email="test@example.com"
+        author_email="test@example.com",
     )
-    
+
     assert config.repo_path == "./repo"
     assert config.commit_message == "Test commit message"
     assert config.author_name == "Test Author"
     assert config.author_email == "test@example.com"
 
 
-def test_airopa_config():
-    """Test full AIropaConfig integration"""
-    config = AIropaConfig()
-    
-    # Test default values
-    assert config.scraper.user_agent == "AIropa Bot/1.0"
-    assert config.scraper.timeout == 30
-    assert config.classifier.categories == [
-        "policy", "regulation", "innovation", 
-        "research", "funding", "ethics"
-    ]
-    assert config.quality.min_length == 500
-    assert config.quality.max_length == 5000
-    assert config.quality.quality_threshold == 0.7
-    assert config.generator.output_dir == "../src/content/post"
-    assert config.git.repo_path == ".."
+def test_full_config():
+    """Test full Config integration"""
+    config = Config()
+
+    # Test that all sub-configs are present
+    assert config.scraper is not None
+    assert config.ai is not None
+    assert config.database is not None
+    assert config.content is not None
+    assert config.git is not None
+
+    # Test some default values
+    assert config.scraper.max_articles_per_source == 10
+    assert config.database.db_path == "database/airopa.db"
 
 
-def test_config_validation():
-    """Test config validation errors"""
-    # Test invalid timeout
-    with pytest.raises(ValidationError):
-        ScraperConfig(timeout=-1)
-    
-    # Test invalid quality threshold
-    with pytest.raises(ValidationError):
-        QualityScoreConfig(quality_threshold=1.5)
-
-
-def test_config_overrides():
-    """Test config override functionality"""
-    config = AIropaConfig(
-        scraper=ScraperConfig(timeout=120),
-        quality=QualityScoreConfig(quality_threshold=0.9)
+def test_config_override():
+    """Test config with overridden sub-configs"""
+    config = Config(
+        scraper=ScraperConfig(max_articles_per_source=20),
+        git=GitConfig(author_name="Custom Bot"),
     )
-    
-    assert config.scraper.timeout == 120
-    assert config.quality.quality_threshold == 0.9
+
+    assert config.scraper.max_articles_per_source == 20
+    assert config.git.author_name == "Custom Bot"
     # Other defaults should remain
-    assert config.scraper.user_agent == "AIropa Bot/1.0"
+    assert config.database.db_path == "database/airopa.db"

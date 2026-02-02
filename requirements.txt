@@ -17,10 +17,10 @@ sqlalchemy==2.0.23
 # API framework
 fastapi==0.109.0
 uvicorn[standard]==0.25.0
+pydantic==2.6.4
 
 # File handling and utilities
 python-slugify==8.0.1
-# pydantic==2.6.4  # Disabled due to Python 3.13 compatibility issues
 
 # Testing and development
 pytest==7.4.3
@@ -30,7 +30,3 @@ isort==5.13.2
 # HTTP and web requests
 requests==2.31.0
 httpx==0.26.0
-
-# Alternative packages for Python 3.13 compatibility
-pydantic==1.10.13  # Using Pydantic v1 which is more compatible
-# Note: AI/ML features will need to be implemented with alternative approaches

@@ -60,9 +60,7 @@ class Database:
             self.connection = None
             self.cursor = None
 
-    def execute(
-        self, query: str, params: tuple[Any, ...] | None = None
-    ) -> bool:
+    def execute(self, query: str, params: tuple[Any, ...] | None = None) -> bool:
         """
         Execute a SQL query.
 

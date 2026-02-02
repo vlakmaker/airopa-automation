@@ -62,9 +62,7 @@ class ScraperAgent:
                                 entry.get("link", "")
                             ),
                             summary=entry.get("summary", ""),
-                            published_date=self._parse_date(
-                                entry.get("published", "")
-                            ),
+                            published_date=self._parse_date(entry.get("published", "")),
                             scraped_date=datetime.now(),
                         )
                         articles.append(article)
@@ -251,10 +249,7 @@ class QualityScoreAgent:
             score += 0.2
 
         # Source credibility
-        if any(
-            source in article.source.lower()
-            for source in ["europa.eu", "airopa"]
-        ):
+        if any(source in article.source.lower() for source in ["europa.eu", "airopa"]):
             score += 0.3
 
         # Category relevance
@@ -304,22 +299,20 @@ class ContentGeneratorAgent:
     def _generate_frontmatter(self, article: Article) -> str:
         """Generate YAML frontmatter for markdown file"""
         frontmatter = "---\n"
-        frontmatter += f"title: \"{article.title}\"\n"
-        frontmatter += (
-            f"date: \"{article.published_date.strftime('%Y-%m-%d') if article.published_date else datetime.now().strftime('%Y-%m-%d')}\"\n"  # noqa: E501
-        )
-        frontmatter += f"author: \"{config.content.default_author}\"\n"
-        frontmatter += f"source: \"{article.source}\"\n"
-        frontmatter += f"url: \"{article.url}\"\n"
-        frontmatter += f"pillar: \"{article.category}\"\n"
+        frontmatter += f'title: "{article.title}"\n'
+        frontmatter += f"date: \"{article.published_date.strftime('%Y-%m-%d') if article.published_date else datetime.now().strftime('%Y-%m-%d')}\"\n"  # noqa: E501
+        frontmatter += f'author: "{config.content.default_author}"\n'
+        frontmatter += f'source: "{article.source}"\n'
+        frontmatter += f'url: "{article.url}"\n'
+        frontmatter += f'pillar: "{article.category}"\n'
 
         if article.country:
-            frontmatter += f"country: \"{article.country}\"\n"
+            frontmatter += f'country: "{article.country}"\n'
 
         if article.summary:
-            frontmatter += f"description: \"{article.summary[:160]}\"\n"
+            frontmatter += f'description: "{article.summary[:160]}"\n'
 
-        frontmatter += f"coverImage: \"{config.content.default_cover_image}\"\n"
+        frontmatter += f'coverImage: "{config.content.default_cover_image}"\n'
         frontmatter += "isFeatured: false\n"
         frontmatter += "isAiGenerated: true\n"
         frontmatter += "---"
@@ -347,9 +340,7 @@ class GitCommitAgent:
 
             self.repo.index.commit(
                 config.git.commit_message,
-                author=git.Actor(
-                    config.git.author_name, config.git.author_email
-                ),
+                author=git.Actor(config.git.author_name, config.git.author_email),
             )
 
             return True

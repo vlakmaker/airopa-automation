@@ -2,6 +2,21 @@
 AGENTS_ANALYSIS.md
 BACKEND_FRONTEND_INTEGRATION_PLAN.md
 API_DEVELOPMENT_MVI_PLAN.md
+FRONTEND_INTEGRATION_BRIEF.md
 
 # Test scripts
 test_api_basic.py
+test_api_integration.py
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Database files
+database/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

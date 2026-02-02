@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from airopa_automation.api.routes import health, articles
+from airopa_automation.api.routes import health, articles, jobs
 
 app = FastAPI(
     title="AIropa API",
@@ -33,12 +33,13 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(articles.router)
+app.include_router(jobs.router)
 
 @app.get("/")
 def root():
     """
     Root endpoint
-    
+
     Returns basic information about the API service.
     """
     return {
@@ -49,6 +50,8 @@ def root():
         "endpoints": {
             "health": "/api/health",
             "articles": "/api/articles",
-            "article_detail": "/api/articles/{id}"
+            "article_detail": "/api/articles/{id}",
+            "scrape": "/api/scrape",
+            "job_status": "/api/jobs/{job_id}"
         }
     }

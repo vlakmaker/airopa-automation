@@ -25,6 +25,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
+        pip install lxml_html_clean
         pip install -e .
 
     - name: Run linting
@@ -61,7 +62,7 @@ jobs:
         python-version: "3.12"
 
     - name: Install build dependencies
-      run: pip install build twine
+      run: pip install build twine lxml_html_clean
 
     - name: Build package
       run: python -m build

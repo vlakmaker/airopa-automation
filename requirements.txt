@@ -1,0 +1,27 @@
+# AIropa Automation - Python Dependencies
+
+# Core scraping libraries
+feedparser==6.0.10
+newspaper3k==0.2.8
+playwright==1.40.0
+beautifulsoup4==4.12.2
+
+# AI/ML for content classification
+groq==0.1.0
+python-dotenv==1.0.0
+
+# Database and storage
+sqlite3==3.44.2
+
+# File handling and utilities
+python-slugify==8.0.1
+pydantic==2.5.3
+
+# Testing and development
+pytest==7.4.3
+black==23.12.1
+isort==5.13.2
+
+# HTTP and web requests
+requests==2.31.0
+httpx==0.26.0

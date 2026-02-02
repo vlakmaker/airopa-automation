@@ -2,15 +2,16 @@
 
 import hashlib
 import time
-import feedparser
-from typing import List, Optional
 from datetime import datetime
 from pathlib import Path
-from slugify import slugify
+from typing import List, Optional
+
+import feedparser
 import requests
 from bs4 import BeautifulSoup
 from newspaper import Article as NewspaperArticle
 from pydantic import BaseModel
+from slugify import slugify
 
 from airopa_automation.config import config
 

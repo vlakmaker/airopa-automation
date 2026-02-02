@@ -1,0 +1,7 @@
+# Documentation and analysis files
+AGENTS_ANALYSIS.md
+BACKEND_FRONTEND_INTEGRATION_PLAN.md
+API_DEVELOPMENT_MVI_PLAN.md
+
+# Test scripts
+test_api_basic.py

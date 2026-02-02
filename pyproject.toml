@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "AI-powered automation workflows"
 requires-python = ">=3.12"
 
+[tool.setuptools.packages.find]
+include = ["airopa_automation*"]
+
 [tool.black]
 line-length = 88
 target-version = ["py312"]

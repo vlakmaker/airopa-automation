@@ -11,11 +11,15 @@ def test_scraper_config_defaults():
     """Test ScraperConfig default values"""
     config = ScraperConfig()
 
-    assert len(config.rss_feeds) > 0
-    assert len(config.web_sources) > 0
+    assert len(config.rss_feeds) == 4  # Updated to 4 RSS feeds
+    assert len(config.web_sources) == 3  # Updated to 3 web sources
     assert config.max_articles_per_source == 10
     assert config.rate_limit_delay == 1.0
     assert "AIropaBot" in config.user_agent
+    # Test that the new URLs are present
+    assert any("sifted.eu" in url for url in config.rss_feeds)
+    assert any("tech.eu" in url for url in config.rss_feeds)
+    assert any("european-champions.org" in url for url in config.rss_feeds)
 
 
 def test_scraper_config_custom():

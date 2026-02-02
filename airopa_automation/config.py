@@ -12,14 +12,15 @@ load_dotenv()
 
 class ScraperConfig(BaseModel):
     rss_feeds: list[str] = [
-        "https://ai.europa.eu/rss.xml",
-        "https://www.european-ai-alliance.eu/rss.xml",
-        "https://ai4eu.eu/feed.xml",
+        "https://sifted.eu/feed/?post_type=article",
+        "https://tech.eu/category/deep-tech/feed",
+        "https://european-champions.org/feed",
+        "https://tech.eu/category/robotics/feed",
     ]
     web_sources: list[str] = [
-        "https://ai.europa.eu",
-        "https://www.european-ai-alliance.eu",
-        "https://ai4eu.eu",
+        "https://sifted.eu",
+        "https://tech.eu",
+        "https://european-champions.org",
     ]
     max_articles_per_source: int = 10
     rate_limit_delay: float = 1.0  # seconds between requests

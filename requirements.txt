@@ -6,16 +6,15 @@ newspaper3k==0.2.8
 playwright==1.40.0
 beautifulsoup4==4.12.2
 
-# AI/ML for content classification
-groq==0.1.0
+# AI/ML for content classification (using alternative packages for Python 3.13 compatibility)
+# groq==1.0.0  # Disabled due to Python 3.13 compatibility issues
 python-dotenv==1.0.0
 
-# Database and storage
-sqlite3==3.44.2
+# Database and storage (SQLite is included in Python standard library)
 
 # File handling and utilities
 python-slugify==8.0.1
-pydantic==2.5.3
+# pydantic==2.6.4  # Disabled due to Python 3.13 compatibility issues
 
 # Testing and development
 pytest==7.4.3
@@ -25,3 +24,7 @@ isort==5.13.2
 # HTTP and web requests
 requests==2.31.0
 httpx==0.26.0
+
+# Alternative packages for Python 3.13 compatibility
+pydantic==1.10.13  # Using Pydantic v1 which is more compatible
+# Note: AI/ML features will need to be implemented with alternative approaches

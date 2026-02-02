@@ -29,6 +29,7 @@ class AIConfig(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 1024
     api_key: str = os.getenv("GROQ_API_KEY", "")
+    # Note: AI features will be limited due to Python 3.13 compatibility issues
 
 class DatabaseConfig(BaseModel):
     db_path: str = "database/airopa.db"
@@ -41,7 +42,7 @@ class ContentConfig(BaseModel):
     default_cover_image: str = "/assets/featured-story.jpg"
 
 class GitConfig(BaseModel):
-    repo_path: str = "../airopa"
+    repo_path: str = ".."
     commit_message: str = "chore(content): add automated AI news articles"
     author_name: str = "AIropa Bot"
     author_email: str = "bot@airopa.eu"

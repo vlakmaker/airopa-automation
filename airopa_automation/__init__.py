@@ -4,7 +4,7 @@ AIropa Automation Layer - Core Package
 This package provides the foundation for AI-powered automation workflows.
 """
 
-from .agents import BaseAgent
+# from .agents import BaseAgent
 from .config import Config
 from .database import Database
 

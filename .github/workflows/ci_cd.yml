@@ -38,13 +38,13 @@ jobs:
 
     - name: Run tests
       continue-on-error: true
-      run: pytest tests/ --cov=airopa_automation --cov-report=xml
+      run: python run_tests.py
 
-    - name: Upload coverage
-      uses: codecov/codecov-action@v3
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        file: ./coverage.xml
+    # - name: Upload coverage
+    #   uses: codecov/codecov-action@v3
+    #   with:
+    #     token: ${{ secrets.CODECOV_TOKEN }}
+    #     file: ./coverage.xml
 
   build:
     name: Build and Package
@@ -67,7 +67,7 @@ jobs:
       run: python -m build
 
     - name: Store artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: python-package
         path: dist/*
@@ -80,7 +80,7 @@ jobs:
     
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: python-package
 

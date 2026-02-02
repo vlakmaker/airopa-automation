@@ -80,6 +80,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     steps:
+    - name: Install twine
+      run: pip install twine
+    
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:

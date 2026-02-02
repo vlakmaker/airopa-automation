@@ -26,8 +26,8 @@ class Database:
             config (dict[str, Any]): Database configuration
         """
         self.config = config
-        self.connection = None
-        self.cursor = None
+        self.connection: Optional[sqlite3.Connection] = None
+        self.cursor: Optional[sqlite3.Cursor] = None
 
     def connect(self) -> bool:
         """
@@ -76,6 +76,9 @@ class Database:
                 if not self.connect():
                     return False
 
+            if self.cursor is None:
+                return False
+
             if params:
                 self.cursor.execute(query, params)
             else:
@@ -100,8 +103,9 @@ class Database:
         Returns:
             Optional[tuple[Any, ...]]: First result row or None
         """
-        if self.execute(query, params):
-            return self.cursor.fetchone()
+        if self.execute(query, params) and self.cursor is not None:
+            result: Optional[tuple[Any, ...]] = self.cursor.fetchone()
+            return result
         return None
 
     def fetch_all(
@@ -117,8 +121,9 @@ class Database:
         Returns:
             list[tuple[Any, ...]]: All result rows
         """
-        if self.execute(query, params):
-            return self.cursor.fetchall()
+        if self.execute(query, params) and self.cursor is not None:
+            result: list[tuple[Any, ...]] = self.cursor.fetchall()
+            return result
         return []
 
     def commit(self) -> None:

@@ -163,7 +163,7 @@ class ScraperAgent:
             newspaper_article = NewspaperArticle(url)
             newspaper_article.download()
             newspaper_article.parse()
-            return newspaper_article.text
+            return str(newspaper_article.text)
         except Exception as e:
             print(f"Error extracting content from {url}: {e}")
             return ""
@@ -174,10 +174,11 @@ class ScraperAgent:
             return None
 
         # Try multiple date formats
-        from dateutil import parser
+        from dateutil import parser as dateutil_parser
 
         try:
-            return parser.parse(date_str)
+            parsed: datetime = dateutil_parser.parse(date_str)
+            return parsed
         except Exception:
             return None
 
@@ -274,14 +275,14 @@ class ContentGeneratorAgent:
         """Generate markdown file for an article"""
         try:
             # Generate filename
-            title_slug = slugify(article.title)
+            title_slug: str = slugify(article.title)
             date_str = (
                 article.published_date.strftime("%Y-%m-%d")
                 if article.published_date
                 else datetime.now().strftime("%Y-%m-%d")
             )
             filename = f"{date_str}-{title_slug}.md"
-            filepath = self.output_dir / filename
+            filepath: Path = self.output_dir / filename
 
             # Generate frontmatter
             frontmatter = self._generate_frontmatter(article)

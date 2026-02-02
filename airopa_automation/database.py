@@ -5,13 +5,6 @@ This module provides a unified interface for database operations
 across different database backends (SQLite, PostgreSQL, etc.).
 """
 
-"""
-Database Module - Database connectivity and operations
-
-This module provides a unified interface for database operations
-across different database backends (SQLite, PostgreSQL, etc.).
-"""
-
 import os
 import sqlite3
 from typing import Any, Optional

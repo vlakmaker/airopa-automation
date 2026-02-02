@@ -4,8 +4,13 @@ AIropa Automation Layer - Core Package
 This package provides the foundation for AI-powered automation workflows.
 """
 
-from .agents import (CategoryClassifierAgent, ContentGeneratorAgent,
-                     GitCommitAgent, QualityScoreAgent, ScraperAgent)
+from .agents import (
+    CategoryClassifierAgent,
+    ContentGeneratorAgent,
+    GitCommitAgent,
+    QualityScoreAgent,
+    ScraperAgent,
+)
 from .config import Config
 from .database import Database
 

@@ -1,20 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from airopa_automation.api.routes import health, articles, jobs
+
 from airopa_automation.api.models.database import init_db
+from airopa_automation.api.routes import articles, health, jobs
 
 app = FastAPI(
     title="AIropa API",
     version="1.0.0",
     description="API for AIropa Automation Layer - Content automation and processing",
-    contact={
-        "name": "AIropa Team",
-        "email": "tech@airopa.eu"
-    },
-    license_info={
-        "name": "MIT License",
-        "url": "https://opensource.org/licenses/MIT"
-    }
+    contact={"name": "AIropa Team", "email": "tech@airopa.eu"},
+    license_info={"name": "MIT License", "url": "https://opensource.org/licenses/MIT"},
 )
 
 
@@ -25,6 +20,7 @@ async def startup_event():
     print("Initializing database...")
     init_db()
     print("Database initialized successfully!")
+
 
 # Configure CORS
 app.add_middleware(
@@ -65,6 +61,6 @@ def root():
             "articles": "/api/articles",
             "article_detail": "/api/articles/{id}",
             "scrape": "/api/scrape",
-            "job_status": "/api/jobs/{job_id}"
-        }
+            "job_status": "/api/jobs/{job_id}",
+        },
     }

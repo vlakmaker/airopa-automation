@@ -2,15 +2,20 @@
 Articles API endpoints
 """
 
-from fastapi import APIRouter, Query, HTTPException, Depends
-from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from ..models.database import Article as DBArticle
+from ..models.database import get_db
 from ..models.schemas import (
-    ArticleResponse, ArticlesListResponse, ArticleCategory, ArticleCountry
+    ArticleCategory,
+    ArticleCountry,
+    ArticleResponse,
+    ArticlesListResponse,
 )
-from ..models.database import get_db, Article as DBArticle
 
 router = APIRouter(prefix="/api", tags=["articles"])
 
@@ -24,13 +29,11 @@ async def list_articles(
     category: Optional[ArticleCategory] = Query(
         None, description="Filter by article category"
     ),
-    country: Optional[ArticleCountry] = Query(
-        None, description="Filter by country"
-    ),
+    country: Optional[ArticleCountry] = Query(None, description="Filter by country"),
     min_quality: float = Query(
         0.0, ge=0.0, le=1.0, description="Minimum quality score"
     ),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     List processed articles
@@ -74,7 +77,7 @@ async def list_articles(
                 country=article.country,
                 quality_score=article.quality_score,
                 created_at=article.created_at,
-                published_date=article.published_date
+                published_date=article.published_date,
             )
             for article in articles
         ]
@@ -84,13 +87,12 @@ async def list_articles(
             total=total,
             limit=limit,
             offset=offset,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
         )
 
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving articles: {str(e)}"
+            status_code=500, detail=f"Error retrieving articles: {str(e)}"
         )
 
 
@@ -117,13 +119,12 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
             country=article.country,
             quality_score=article.quality_score,
             created_at=article.created_at,
-            published_date=article.published_date
+            published_date=article.published_date,
         )
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving article: {str(e)}"
+            status_code=500, detail=f"Error retrieving article: {str(e)}"
         )

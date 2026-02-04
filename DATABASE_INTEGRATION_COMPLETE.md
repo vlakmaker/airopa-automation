@@ -338,7 +338,7 @@ The API is now fully functional with database persistence, background job proces
 | 18 | Search endpoint | ⏳ Pending | Medium | Full-text search |
 | 19 | Stats endpoint (/api/stats) | ⏳ Pending | Low | Analytics dashboard |
 | 20 | Webhooks (job notifications) | ⏳ Pending | Medium | Slack/Discord alerts |
-| 21 | PostgreSQL migration | ⏳ Pending | Medium | Production scaling |
+| 21 | PostgreSQL migration | ✅ Done | Medium | `psycopg2-binary` + URL fix |
 | 22 | Redis caching | ⏳ Pending | Low | Performance |
 | 23 | Rate limiting | ⏳ Pending | Medium | API protection |
 
@@ -351,6 +351,7 @@ The API is now fully functional with database persistence, background job proces
 | 2026-02-02 | Initial database integration complete | Claude |
 | 2026-02-04 | Added implementation checklist | Claude |
 | 2026-02-04 | Implemented automated scraping (GitHub Actions) | Claude |
+| 2026-02-04 | Added PostgreSQL support for Railway persistence | Claude |
 
 ---
 
@@ -396,3 +397,57 @@ View scrape history and logs:
 - Go to **Actions** tab
 - Filter by **Scheduled Scrape** workflow
 - Click any run to see detailed logs
+
+---
+
+## PostgreSQL Setup (Railway)
+
+### Why PostgreSQL?
+
+SQLite data is lost on every Railway deploy because containers are ephemeral.
+PostgreSQL persists data independently of your application container.
+
+### Setup Steps
+
+1. **Add PostgreSQL to Railway**
+   - Go to your Railway project dashboard
+   - Click **+ New** → **Database** → **PostgreSQL**
+   - Wait for provisioning (~30 seconds)
+
+2. **Link to your service**
+   - Click on your API service
+   - Go to **Variables** tab
+   - Click **Add Reference** → Select PostgreSQL → `DATABASE_URL`
+   - Railway automatically injects the connection string
+
+3. **Deploy**
+   - Push your code (the app auto-detects PostgreSQL via `DATABASE_URL`)
+   - Tables are created automatically on startup
+
+### How It Works
+
+The code automatically handles the URL format:
+```python
+# Railway provides: postgres://user:pass@host:port/db
+# SQLAlchemy 2.x needs: postgresql://user:pass@host:port/db
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+```
+
+### Verify Connection
+
+```bash
+curl https://your-app.up.railway.app/api/health
+# Should return: {"database": "connected", ...}
+```
+
+### Local Development
+
+For local development, SQLite is still used by default:
+```bash
+# No DATABASE_URL set = SQLite
+python -m uvicorn airopa_automation.api.main:app --reload
+
+# Or explicitly use PostgreSQL locally:
+export DATABASE_URL="postgresql://user:pass@localhost:5432/airopa"
+```

@@ -7,9 +7,11 @@ Usage:
     python -m airopa_automation.api.init_db
 """
 
-from airopa_automation.api.models.database import init_db, drop_db, engine
-from sqlalchemy import inspect
 import sys
+
+from sqlalchemy import inspect
+
+from airopa_automation.api.models.database import drop_db, engine, init_db
 
 
 def check_tables_exist():
@@ -31,7 +33,7 @@ def main():
         print("\nWarning: Database tables already exist!")
         response = input("Do you want to drop existing tables and recreate? (yes/no): ")
 
-        if response.lower() in ['yes', 'y']:
+        if response.lower() in ["yes", "y"]:
             print("\nDropping existing tables...")
             drop_db()
             print("Creating new tables...")
@@ -57,7 +59,7 @@ def main():
         print(f"\n{table}:")
         columns = inspector.get_columns(table)
         for col in columns:
-            nullable = "NULL" if col['nullable'] else "NOT NULL"
+            nullable = "NULL" if col["nullable"] else "NOT NULL"
             print(f"  - {col['name']}: {col['type']} {nullable}")
 
 

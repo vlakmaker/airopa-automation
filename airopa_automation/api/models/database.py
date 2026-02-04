@@ -62,6 +62,10 @@ class Job(Base):
 # Database configuration and session management
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./database/airopa_api.db")
 
+# Railway uses postgres:// but SQLAlchemy 2.x requires postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 # Create engine
 engine = create_engine(
     DATABASE_URL,

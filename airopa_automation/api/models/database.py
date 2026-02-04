@@ -2,11 +2,12 @@
 SQLAlchemy database models for the API
 """
 
+import os
 from datetime import datetime
-from sqlalchemy import Column, String, Float, DateTime, Integer, Text, create_engine
+
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
 
 Base = declarative_base()
 
@@ -15,6 +16,7 @@ class Article(Base):
     """
     Article model - stores processed articles from the automation pipeline
     """
+
     __tablename__ = "articles"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -30,8 +32,7 @@ class Article(Base):
     published_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow,
-        onupdate=datetime.utcnow
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
     def __repr__(self):
@@ -45,6 +46,7 @@ class Job(Base):
     """
     Job model - tracks background jobs (scraping, processing, etc.)
     """
+
     __tablename__ = "jobs"
 
     id = Column(String, primary_key=True, index=True)  # UUID
@@ -72,7 +74,7 @@ engine = create_engine(
     connect_args=(
         {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
     ),
-    echo=False  # Set to True for SQL debugging
+    echo=False,  # Set to True for SQL debugging
 )
 
 # Create session factory

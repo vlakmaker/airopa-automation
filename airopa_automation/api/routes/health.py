@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 from datetime import datetime
-from ..models.schemas import HealthResponse
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from ..models.database import get_db
+from ..models.schemas import HealthResponse
 
 router = APIRouter(prefix="/api", tags=["health"])
 
@@ -36,5 +38,5 @@ async def health_check(db: Session = Depends(get_db)):
         timestamp=datetime.now(),
         api="AIropa Automation Layer",
         database=database_status,
-        pipeline=pipeline_status
+        pipeline=pipeline_status,
     )

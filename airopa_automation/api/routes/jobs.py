@@ -2,13 +2,15 @@
 Jobs API endpoints
 """
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from sqlalchemy.orm import Session
 from datetime import datetime
 from uuid import uuid4
 
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from ..models.database import Job as DBJob
+from ..models.database import get_db
 from ..models.schemas import JobResponse, JobStatus
-from ..models.database import get_db, Job as DBJob
 from ..services import get_pipeline_service
 
 router = APIRouter(prefix="/api", tags=["jobs"])
@@ -16,8 +18,7 @@ router = APIRouter(prefix="/api", tags=["jobs"])
 
 @router.post("/scrape", response_model=JobResponse)
 async def trigger_scrape(
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
     """
     Trigger a scraping job
@@ -36,7 +37,7 @@ async def trigger_scrape(
             id=job_id,
             status=JobStatus.queued.value,
             job_type="scrape",
-            started_at=datetime.utcnow()
+            started_at=datetime.utcnow(),
         )
         db.add(job)
         db.commit()
@@ -52,13 +53,12 @@ async def trigger_scrape(
             job_type=job.job_type,
             timestamp=job.started_at,
             result_count=job.result_count,
-            error_message=job.error_message
+            error_message=job.error_message,
         )
 
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error creating scrape job: {str(e)}"
+            status_code=500, detail=f"Error creating scrape job: {str(e)}"
         )
 
 
@@ -83,13 +83,12 @@ async def get_job_status(job_id: str, db: Session = Depends(get_db)):
             job_type=job.job_type,
             timestamp=job.started_at,
             result_count=job.result_count,
-            error_message=job.error_message
+            error_message=job.error_message,
         )
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving job status: {str(e)}"
+            status_code=500, detail=f"Error retrieving job status: {str(e)}"
         )

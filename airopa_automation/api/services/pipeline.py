@@ -8,16 +8,20 @@ in the database.
 import hashlib
 from datetime import datetime
 from typing import List
+
 from sqlalchemy.orm import Session
 
+from airopa_automation.agents import Article as PipelineArticle
 from airopa_automation.agents import (
-    ScraperAgent,
     CategoryClassifierAgent,
     QualityScoreAgent,
-    Article as PipelineArticle
+    ScraperAgent,
 )
 from airopa_automation.config import ensure_directories
-from ..models.database import SessionLocal, Article as DBArticle, Job as DBJob
+
+from ..models.database import Article as DBArticle
+from ..models.database import Job as DBJob
+from ..models.database import SessionLocal
 
 
 class PipelineService:
@@ -78,14 +82,11 @@ class PipelineService:
             quality_articles = []
             for article in classified_articles:
                 try:
-                    assessed_article = self.quality_assessor.assess_quality(
-                        article
-                    )
+                    assessed_article = self.quality_assessor.assess_quality(article)
                     quality_articles.append(assessed_article)
                 except Exception as e:
                     print(
-                        f"Error assessing quality for article {article.title}: "
-                        f"{e}"
+                        f"Error assessing quality for article {article.title}: " f"{e}"
                     )
                     continue
 
@@ -112,6 +113,7 @@ class PipelineService:
             # Update job with error status
             print(f"Error in scrape job {job_id}: {e}")
             import traceback
+
             traceback.print_exc()
             try:
                 job = db.query(DBJob).filter(DBJob.id == job_id).first()
@@ -143,10 +145,14 @@ class PipelineService:
             content_hash = self._generate_hash(article.url, article.title)
 
             # Check if article already exists (by URL or content hash)
-            existing = db.query(DBArticle).filter(
-                (DBArticle.url == article.url) |
-                (DBArticle.content_hash == content_hash)
-            ).first()
+            existing = (
+                db.query(DBArticle)
+                .filter(
+                    (DBArticle.url == article.url)
+                    | (DBArticle.content_hash == content_hash)
+                )
+                .first()
+            )
 
             if existing:
                 print(f"Article already exists: {article.title}")
@@ -165,7 +171,7 @@ class PipelineService:
                 summary=article.summary if article.summary else None,
                 published_date=article.published_date,
                 created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                updated_at=datetime.utcnow(),
             )
 
             db.add(db_article)
@@ -178,6 +184,7 @@ class PipelineService:
         except Exception as e:
             print(f"Error storing article {article.title}: {e}")
             import traceback
+
             traceback.print_exc()
             db.rollback()
             return False

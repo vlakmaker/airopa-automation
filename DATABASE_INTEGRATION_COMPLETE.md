@@ -302,3 +302,97 @@ FastAPI (airopa_automation.api.main)
 🎉 **Database integration is COMPLETE and PRODUCTION READY!**
 
 The API is now fully functional with database persistence, background job processing, and comprehensive endpoint coverage. You can continue building your frontend with confidence that the backend API will reliably store and serve content.
+
+---
+
+## Implementation Checklist
+
+> Verified: February 4, 2026
+
+### Core Database Integration (Complete ✅)
+
+| # | Requirement | Status | Location |
+|---|-------------|--------|----------|
+| 1 | Article model with all fields | ✅ Done | `api/models/database.py:15-36` |
+| 2 | Job model with all fields | ✅ Done | `api/models/database.py:39-54` |
+| 3 | SQLAlchemy session factory | ✅ Done | `api/models/database.py:68-84` |
+| 4 | Database init script | ✅ Done | `api/init_db.py` |
+| 5 | GET /api/articles (list + filters) | ✅ Done | `api/routes/articles.py:16-78` |
+| 6 | GET /api/articles/{id} | ✅ Done | `api/routes/articles.py:81-113` |
+| 7 | POST /api/scrape (trigger job) | ✅ Done | `api/routes/jobs.py:17-62` |
+| 8 | GET /api/jobs/{id} (status) | ✅ Done | `api/routes/jobs.py:65-95` |
+| 9 | GET /api/health (DB check) | ✅ Done | `api/routes/health.py:10-39` |
+| 10 | Pipeline service (scrape → DB) | ✅ Done | `api/services/pipeline.py:22-232` |
+| 11 | Deduplication (URL + hash) | ✅ Done | `api/services/pipeline.py:136-143` |
+| 12 | Quality filtering (≥0.6) | ✅ Done | `api/services/pipeline.py:85` |
+| 13 | Background job processing | ✅ Done | `api/routes/jobs.py:47` |
+
+### Future Enhancements (Backlog)
+
+| # | Enhancement | Status | Priority | Notes |
+|---|-------------|--------|----------|-------|
+| 14 | Automated scraping schedule | ✅ Done | **Critical** | `.github/workflows/scheduled-scrape.yml` |
+| 15 | Add more RSS feeds | ⏳ Pending | High | EU Startups, TNW, etc. |
+| 16 | Authentication (API key/JWT) | ⏳ Pending | Medium | Protect write endpoints |
+| 17 | Pagination links (next/prev) | ⏳ Pending | Low | Better API UX |
+| 18 | Search endpoint | ⏳ Pending | Medium | Full-text search |
+| 19 | Stats endpoint (/api/stats) | ⏳ Pending | Low | Analytics dashboard |
+| 20 | Webhooks (job notifications) | ⏳ Pending | Medium | Slack/Discord alerts |
+| 21 | PostgreSQL migration | ⏳ Pending | Medium | Production scaling |
+| 22 | Redis caching | ⏳ Pending | Low | Performance |
+| 23 | Rate limiting | ⏳ Pending | Medium | API protection |
+
+---
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-02-02 | Initial database integration complete | Claude |
+| 2026-02-04 | Added implementation checklist | Claude |
+| 2026-02-04 | Implemented automated scraping (GitHub Actions) | Claude |
+
+---
+
+## Automated Scraping
+
+### Configuration
+
+The automated scraping is configured via GitHub Actions workflow at:
+`.github/workflows/scheduled-scrape.yml`
+
+**Schedule**: Every 6 hours (0:00, 6:00, 12:00, 18:00 UTC)
+
+### How It Works
+
+1. **Health Check** - Verifies API is accessible
+2. **Trigger Scrape** - Calls `POST /api/scrape`
+3. **Wait & Monitor** - Polls job status every 10 seconds (max 5 minutes)
+4. **Report Results** - Logs articles stored count
+
+### Manual Trigger
+
+You can manually trigger a scrape from GitHub:
+
+1. Go to **Actions** tab in the repository
+2. Select **Scheduled Scrape** workflow
+3. Click **Run workflow**
+4. Optionally enter a reason
+5. Click **Run workflow** button
+
+### Configuration Options
+
+Set `RAILWAY_API_URL` secret in repository settings to override the default API URL:
+
+```
+Settings → Secrets and variables → Actions → New repository secret
+Name: RAILWAY_API_URL
+Value: https://your-app.up.railway.app
+```
+
+### Monitoring
+
+View scrape history and logs:
+- Go to **Actions** tab
+- Filter by **Scheduled Scrape** workflow
+- Click any run to see detailed logs

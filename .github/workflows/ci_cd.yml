@@ -10,7 +10,7 @@ jobs:
   test:
     name: Test and Lint
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -38,62 +38,4 @@ jobs:
       run: mypy airopa_automation/
 
     - name: Run tests
-      continue-on-error: true
       run: python run_tests.py
-
-    # - name: Upload coverage
-    #   uses: codecov/codecov-action@v3
-    #   with:
-    #     token: ${{ secrets.CODECOV_TOKEN }}
-    #     file: ./coverage.xml
-
-  build:
-    name: Build and Package
-    needs: test
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.12"
-
-    - name: Install build dependencies
-      run: pip install build twine lxml_html_clean
-
-    - name: Build package
-      run: python -m build
-
-    - name: Store artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: python-package
-        path: dist/*
-
-  deploy:
-    name: Deploy
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: Install twine
-      run: pip install twine
-    
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: python-package
-        path: dist/
-
-    - name: List files for debugging
-      run: ls -la dist/
-
-    - name: Publish to PyPI
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: twine upload dist/*

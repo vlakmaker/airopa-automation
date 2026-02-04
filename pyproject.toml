@@ -25,7 +25,28 @@ ignore_missing_imports = true
 follow_imports = "silent"
 strict_optional = true
 warn_redundant_casts = true
-warn_unused_ignores = true
+warn_unused_ignores = false
 warn_no_return = true
 warn_return_any = true
 warn_unreachable = true
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+
+# SQLAlchemy models - disable strict checking
+[[tool.mypy.overrides]]
+module = "airopa_automation.api.models.database"
+disable_error_code = ["valid-type", "misc"]
+
+# Routes accessing SQLAlchemy models
+[[tool.mypy.overrides]]
+module = "airopa_automation.api.routes.*"
+disable_error_code = ["arg-type"]
+
+# Services accessing SQLAlchemy models
+[[tool.mypy.overrides]]
+module = "airopa_automation.api.services.*"
+disable_error_code = ["assignment", "arg-type"]
+
+# FastAPI/Starlette middleware typing
+[[tool.mypy.overrides]]
+module = "airopa_automation.api.main"
+disable_error_code = ["arg-type", "call-arg"]

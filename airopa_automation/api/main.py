@@ -17,6 +17,7 @@ app = FastAPI(
     }
 )
 
+
 # Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
@@ -45,6 +46,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(articles.router)
 app.include_router(jobs.router)
+
 
 @app.get("/")
 def root():

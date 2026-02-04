@@ -7,7 +7,7 @@ Usage:
     python -m airopa_automation.api.init_db
 """
 
-from airopa_automation.api.models.database import init_db, drop_db, engine, Base
+from airopa_automation.api.models.database import init_db, drop_db, engine
 from sqlalchemy import inspect
 import sys
 

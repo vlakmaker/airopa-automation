@@ -7,6 +7,7 @@ from ..models.database import get_db
 
 router = APIRouter(prefix="/api", tags=["health"])
 
+
 @router.get("/health", response_model=HealthResponse)
 async def health_check(db: Session = Depends(get_db)):
     """

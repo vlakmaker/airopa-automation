@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import Optional
 
-from ..models.schemas import ArticleResponse, ArticlesListResponse, ArticleCategory, ArticleCountry
+from ..models.schemas import (
+    ArticleResponse, ArticlesListResponse, ArticleCategory, ArticleCountry
+)
 from ..models.database import get_db, Article as DBArticle
 
 router = APIRouter(prefix="/api", tags=["articles"])
@@ -15,18 +17,27 @@ router = APIRouter(prefix="/api", tags=["articles"])
 
 @router.get("/articles", response_model=ArticlesListResponse)
 async def list_articles(
-    limit: int = Query(50, ge=1, le=100, description="Maximum number of articles to return"),
+    limit: int = Query(
+        50, ge=1, le=100, description="Maximum number of articles to return"
+    ),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-    category: Optional[ArticleCategory] = Query(None, description="Filter by article category"),
-    country: Optional[ArticleCountry] = Query(None, description="Filter by country"),
-    min_quality: float = Query(0.0, ge=0.0, le=1.0, description="Minimum quality score"),
+    category: Optional[ArticleCategory] = Query(
+        None, description="Filter by article category"
+    ),
+    country: Optional[ArticleCountry] = Query(
+        None, description="Filter by country"
+    ),
+    min_quality: float = Query(
+        0.0, ge=0.0, le=1.0, description="Minimum quality score"
+    ),
     db: Session = Depends(get_db)
 ):
     """
     List processed articles
 
-    Returns a paginated list of articles that have been processed by the automation pipeline.
-    Supports filtering by category, country, and minimum quality score.
+    Returns a paginated list of articles that have been processed by the
+    automation pipeline. Supports filtering by category, country, and
+    minimum quality score.
     """
     try:
         # Build query with filters
@@ -45,7 +56,12 @@ async def list_articles(
         total = query.count()
 
         # Apply pagination and ordering (most recent first)
-        articles = query.order_by(DBArticle.created_at.desc()).offset(offset).limit(limit).all()
+        articles = (
+            query.order_by(DBArticle.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
 
         # Convert to ArticleResponse models
         article_responses = [

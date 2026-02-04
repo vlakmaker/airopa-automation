@@ -6,7 +6,6 @@ from datetime import datetime
 from sqlalchemy import Column, String, Float, DateTime, Integer, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from typing import Optional
 import os
 
 Base = declarative_base()
@@ -30,10 +29,16 @@ class Article(Base):
     summary = Column(Text, nullable=True)  # Article summary
     published_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
 
     def __repr__(self):
-        return f"<Article(id={self.id}, title='{self.title}', category='{self.category}')>"
+        return (
+            f"<Article(id={self.id}, title='{self.title}', "
+            f"category='{self.category}')>"
+        )
 
 
 class Job(Base):
@@ -60,7 +65,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./database/airopa_api.db")
 # Create engine
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    connect_args=(
+        {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+    ),
     echo=False  # Set to True for SQL debugging
 )
 

@@ -1,12 +1,13 @@
 """
 Pipeline service - Connects the automation pipeline to the database
 
-This service handles running the scraping pipeline and storing results in the database.
+This service handles running the scraping pipeline and storing results
+in the database.
 """
 
 import hashlib
 from datetime import datetime
-from typing import Optional, List
+from typing import List
 from sqlalchemy.orm import Session
 
 from airopa_automation.agents import (
@@ -15,13 +16,14 @@ from airopa_automation.agents import (
     QualityScoreAgent,
     Article as PipelineArticle
 )
-from airopa_automation.config import config, ensure_directories
+from airopa_automation.config import ensure_directories
 from ..models.database import SessionLocal, Article as DBArticle, Job as DBJob
 
 
 class PipelineService:
     """
-    Service for running the automation pipeline and storing results in the database
+    Service for running the automation pipeline and storing results
+    in the database
     """
 
     def __init__(self):
@@ -32,7 +34,7 @@ class PipelineService:
         self.classifier = CategoryClassifierAgent()
         self.quality_assessor = QualityScoreAgent()
 
-    def run_scrape_job(self, job_id: str) -> None:
+    def run_scrape_job(self, job_id: str) -> None:  # noqa: C901
         """
         Run a scraping job and store results in the database
 
@@ -76,13 +78,20 @@ class PipelineService:
             quality_articles = []
             for article in classified_articles:
                 try:
-                    assessed_article = self.quality_assessor.assess_quality(article)
+                    assessed_article = self.quality_assessor.assess_quality(
+                        article
+                    )
                     quality_articles.append(assessed_article)
                 except Exception as e:
-                    print(f"Error assessing quality for article {article.title}: {e}")
+                    print(
+                        f"Error assessing quality for article {article.title}: "
+                        f"{e}"
+                    )
                     continue
 
-            high_quality_articles = [a for a in quality_articles if a.quality_score >= 0.6]
+            high_quality_articles = [
+                a for a in quality_articles if a.quality_score >= 0.6
+            ]
             print(f"Found {len(high_quality_articles)} high-quality articles")
 
             # Store articles in database
@@ -135,7 +144,8 @@ class PipelineService:
 
             # Check if article already exists (by URL or content hash)
             existing = db.query(DBArticle).filter(
-                (DBArticle.url == article.url) | (DBArticle.content_hash == content_hash)
+                (DBArticle.url == article.url) |
+                (DBArticle.content_hash == content_hash)
             ).first()
 
             if existing:
@@ -172,7 +182,9 @@ class PipelineService:
             db.rollback()
             return False
 
-    def _remove_duplicates(self, articles: List[PipelineArticle]) -> List[PipelineArticle]:
+    def _remove_duplicates(
+        self, articles: List[PipelineArticle]
+    ) -> List[PipelineArticle]:
         """
         Remove duplicate articles based on URL and hash
 

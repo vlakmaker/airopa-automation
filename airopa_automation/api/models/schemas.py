@@ -26,17 +26,23 @@ class ArticleCountry(str, Enum):
 
 class ArticleResponse(BaseModel):
     """Response model for a single article"""
-    
+
     id: str = Field(..., description="Unique article identifier")
     title: str = Field(..., description="Article title")
     url: str = Field(..., description="Original article URL")
     source: str = Field(..., description="Source website")
     category: ArticleCategory = Field(..., description="Article category")
-    country: Optional[ArticleCountry] = Field(None, description="Country classification")
-    quality_score: float = Field(..., ge=0.0, le=1.0, description="Quality score (0.0-1.0)")
+    country: Optional[ArticleCountry] = Field(
+        None, description="Country classification"
+    )
+    quality_score: float = Field(
+        ..., ge=0.0, le=1.0, description="Quality score (0.0-1.0)"
+    )
     created_at: datetime = Field(..., description="When article was processed")
-    published_date: Optional[datetime] = Field(None, description="Original publication date")
-    
+    published_date: Optional[datetime] = Field(
+        None, description="Original publication date"
+    )
+
     class Config:
         from_attributes = True
         json_schema_extra = {
@@ -56,7 +62,7 @@ class ArticleResponse(BaseModel):
 
 class ArticlesListResponse(BaseModel):
     """Response model for listing articles"""
-    
+
     articles: List[ArticleResponse] = Field(..., description="List of articles")
     total: int = Field(..., description="Total number of articles")
     limit: int = Field(..., description="Number of articles returned")
@@ -66,7 +72,7 @@ class ArticlesListResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Standard error response model"""
-    
+
     error: str = Field(..., description="Error message")
     detail: Optional[str] = Field(None, description="Detailed error information")
     timestamp: datetime = Field(..., description="When error occurred")
@@ -82,18 +88,22 @@ class JobStatus(str, Enum):
 
 class JobResponse(BaseModel):
     """Response model for job operations"""
-    
+
     job_id: str = Field(..., description="Unique job identifier")
     status: JobStatus = Field(..., description="Current job status")
     job_type: str = Field(..., description="Type of job")
     timestamp: datetime = Field(..., description="When job was created")
-    result_count: Optional[int] = Field(None, description="Number of results if completed")
-    error_message: Optional[str] = Field(None, description="Error message if failed")
+    result_count: Optional[int] = Field(
+        None, description="Number of results if completed"
+    )
+    error_message: Optional[str] = Field(
+        None, description="Error message if failed"
+    )
 
 
 class HealthResponse(BaseModel):
     """Response model for health check"""
-    
+
     status: str = Field(..., description="Service health status")
     version: str = Field(..., description="API version")
     timestamp: datetime = Field(..., description="Current timestamp")

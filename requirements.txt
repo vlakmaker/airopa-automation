@@ -19,6 +19,7 @@ psycopg2-binary==2.9.9  # PostgreSQL driver for production
 fastapi==0.109.0
 uvicorn[standard]==0.25.0
 pydantic==2.6.4
+slowapi==0.1.9  # Rate limiting for FastAPI
 
 # File handling and utilities
 python-slugify==8.0.1

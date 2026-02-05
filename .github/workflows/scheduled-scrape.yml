@@ -15,6 +15,8 @@ on:
 env:
   # Default Railway URL - can be overridden with repository secret
   API_URL: ${{ secrets.RAILWAY_API_URL || 'https://web-production-bcd96.up.railway.app' }}
+  # API key for authenticated endpoints (required for /api/scrape)
+  API_KEY: ${{ secrets.API_KEY }}
 
 jobs:
   scrape:
@@ -52,8 +54,16 @@ jobs:
         id: trigger
         run: |
           echo "Triggering scrape job..."
+
+          # Check if API key is configured
+          if [ -z "${{ env.API_KEY }}" ]; then
+            echo "::error::API_KEY secret is not configured. Please add it to repository secrets."
+            exit 1
+          fi
+
           RESPONSE=$(curl -s -X POST "${{ env.API_URL }}/api/scrape" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: ${{ env.API_KEY }}")
 
           echo "Response: $RESPONSE"
 

@@ -2,10 +2,11 @@
 Articles API endpoints
 """
 
+import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from ..models.database import Article as DBArticle
@@ -16,12 +17,17 @@ from ..models.schemas import (
     ArticleResponse,
     ArticlesListResponse,
 )
+from ..rate_limit import DEFAULT_RATE_LIMIT, limiter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["articles"])
 
 
 @router.get("/articles", response_model=ArticlesListResponse)
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def list_articles(
+    request: Request,
     limit: int = Query(
         50, ge=1, le=100, description="Maximum number of articles to return"
     ),
@@ -91,13 +97,16 @@ async def list_articles(
         )
 
     except Exception as e:
+        # Log the actual error for debugging, return generic message to client
+        logger.error(f"Error retrieving articles: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Error retrieving articles: {str(e)}"
+            status_code=500, detail="An error occurred while retrieving articles"
         )
 
 
 @router.get("/articles/{article_id}", response_model=ArticleResponse)
-async def get_article(article_id: int, db: Session = Depends(get_db)):
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def get_article(request: Request, article_id: int, db: Session = Depends(get_db)):
     """
     Get a specific article by ID
 
@@ -125,6 +134,8 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
+        # Log the actual error for debugging, return generic message to client
+        logger.error(f"Error retrieving article {article_id}: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Error retrieving article: {str(e)}"
+            status_code=500, detail="An error occurred while retrieving the article"
         )

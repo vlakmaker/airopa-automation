@@ -108,7 +108,9 @@ def init_db():
 
     # Create all tables
     Base.metadata.create_all(bind=engine)
-    print(f"Database initialized at {DATABASE_URL}")
+    # Don't log DATABASE_URL as it may contain credentials
+    db_type = "PostgreSQL" if DATABASE_URL.startswith("postgresql") else "SQLite"
+    print(f"Database initialized successfully (type: {db_type})")
 
 
 def drop_db():
@@ -116,4 +118,5 @@ def drop_db():
     Drop all tables (useful for development/testing)
     """
     Base.metadata.drop_all(bind=engine)
-    print(f"Database tables dropped at {DATABASE_URL}")
+    # Don't log DATABASE_URL as it may contain credentials
+    print("Database tables dropped successfully")

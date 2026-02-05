@@ -2,31 +2,43 @@
 Jobs API endpoints
 """
 
+import logging
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from ..auth import verify_api_key
 from ..models.database import Job as DBJob
 from ..models.database import get_db
 from ..models.schemas import JobResponse, JobStatus
+from ..rate_limit import DEFAULT_RATE_LIMIT, SCRAPE_RATE_LIMIT, limiter
 from ..services import get_pipeline_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["jobs"])
 
 
 @router.post("/scrape", response_model=JobResponse)
+@limiter.limit(SCRAPE_RATE_LIMIT)
 async def trigger_scrape(
-    background_tasks: BackgroundTasks, db: Session = Depends(get_db)
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    api_key: str = Depends(verify_api_key),
 ):
     """
-    Trigger a scraping job
+    Trigger a scraping job (requires API key authentication)
 
     Starts a background job that runs the automation pipeline to scrape,
     classify, and process articles from configured RSS feeds.
 
     Returns a job ID that can be used to check the status of the job.
+
+    **Authentication:** Requires X-API-Key header with valid API key.
+    **Rate Limit:** 5 requests per minute per IP address.
     """
     try:
         # Generate unique job ID
@@ -57,13 +69,16 @@ async def trigger_scrape(
         )
 
     except Exception as e:
+        # Log the actual error for debugging, return generic message to client
+        logger.error(f"Error creating scrape job: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Error creating scrape job: {str(e)}"
+            status_code=500, detail="An error occurred while creating the scrape job"
         )
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job_status(job_id: str, db: Session = Depends(get_db)):
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def get_job_status(request: Request, job_id: str, db: Session = Depends(get_db)):
     """
     Get job status
 
@@ -89,6 +104,10 @@ async def get_job_status(job_id: str, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
+        # Log the actual error for debugging, return generic message to client
+        logger.error(
+            f"Error retrieving job status for {job_id}: {str(e)}", exc_info=True
+        )
         raise HTTPException(
-            status_code=500, detail=f"Error retrieving job status: {str(e)}"
+            status_code=500, detail="An error occurred while retrieving the job status"
         )

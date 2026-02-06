@@ -30,6 +30,7 @@ class Article(BaseModel):
     category: str = ""
     country: str = ""
     quality_score: float = 0.0
+    eu_relevance: float = 0.0
     image_url: Optional[str] = None
 
     def generate_hash(self) -> str:

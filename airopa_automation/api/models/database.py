@@ -23,9 +23,10 @@ class Article(Base):
     url = Column(String, unique=True, index=True, nullable=False)
     title = Column(String, nullable=False)
     source = Column(String, nullable=False)
-    category = Column(String, nullable=False)  # startups, policy, country, stories
+    category = Column(String, nullable=False)  # startups, policy, research, industry
     country = Column(String, nullable=True)
     quality_score = Column(Float, nullable=False)
+    eu_relevance = Column(Float, nullable=True)  # European relevance score 0-10
     content_hash = Column(String, unique=True, nullable=False)
     content = Column(Text, nullable=True)  # Full article content
     summary = Column(Text, nullable=True)  # Article summary

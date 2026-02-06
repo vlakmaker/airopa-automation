@@ -178,6 +178,7 @@ class PipelineService:
                 category=article.category,
                 country=article.country if article.country else None,
                 quality_score=article.quality_score,
+                eu_relevance=article.eu_relevance if article.eu_relevance else None,
                 content_hash=content_hash,
                 content=article.content if article.content else None,
                 summary=article.summary if article.summary else None,

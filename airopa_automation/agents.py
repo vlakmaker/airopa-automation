@@ -1,8 +1,9 @@
 # AIropa Automation Agents - Base Classes
 
 import hashlib
+import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -14,6 +15,8 @@ from pydantic import BaseModel
 from slugify import slugify
 
 from airopa_automation.config import config
+
+logger = logging.getLogger(__name__)
 
 
 class Article(BaseModel):
@@ -46,6 +49,29 @@ class ScraperAgent:
             }
         )
 
+    def _normalize_source_name(self, raw_source: str) -> str:
+        """Normalize source name using config mapping.
+
+        Deduplicates sources like "https://sifted.eu" and "Sifted" into
+        a single canonical name.
+        """
+        return config.scraper.source_name_map.get(raw_source, raw_source)
+
+    def _is_article_too_old(self, published_date: Optional[datetime]) -> bool:
+        """Check if article is older than the configured max age.
+
+        Returns True if the article should be skipped.
+        Articles with no published_date are NOT skipped (we can't tell).
+        """
+        if not published_date:
+            return False
+        max_age = timedelta(days=config.scraper.max_article_age_days)
+        now = datetime.now(timezone.utc)
+        # Make published_date offset-aware if it's naive
+        if published_date.tzinfo is None:
+            published_date = published_date.replace(tzinfo=timezone.utc)
+        return (now - published_date) > max_age
+
     def scrape_rss_feeds(self) -> List[Article]:
         """Scrape articles from RSS feeds"""
         articles = []
@@ -53,9 +79,22 @@ class ScraperAgent:
         for feed_url in config.scraper.rss_feeds:
             try:
                 feed = feedparser.parse(feed_url)
+                raw_source = feed.feed.get("title", feed_url)
+                source_name = self._normalize_source_name(raw_source)
 
                 for entry in feed.entries[: config.scraper.max_articles_per_source]:
                     try:
+                        published_date = self._parse_date(entry.get("published", ""))
+
+                        # Skip stale articles
+                        if self._is_article_too_old(published_date):
+                            logger.info(
+                                "Skipping stale article: %s (published %s)",
+                                entry.get("title", "unknown"),
+                                published_date,
+                            )
+                            continue
+
                         content, image_url = self._extract_article_data(
                             entry.get("link", "")
                         )
@@ -67,10 +106,10 @@ class ScraperAgent:
                         article = Article(
                             title=entry.get("title", "No title"),
                             url=entry.get("link", ""),
-                            source=feed.feed.get("title", feed_url),
+                            source=source_name,
                             content=content,
                             summary=entry.get("summary", ""),
-                            published_date=self._parse_date(entry.get("published", "")),
+                            published_date=published_date,
                             scraped_date=datetime.now(),
                             image_url=image_url,
                         )

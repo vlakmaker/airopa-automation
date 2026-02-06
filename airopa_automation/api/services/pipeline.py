@@ -21,7 +21,7 @@ from airopa_automation.config import ensure_directories
 
 from ..models.database import Article as DBArticle
 from ..models.database import Job as DBJob
-from ..models.database import SessionLocal
+from ..models.database import SessionLocal, SourceMetric
 
 
 class PipelineService:
@@ -95,11 +95,23 @@ class PipelineService:
             ]
             print(f"Found {len(high_quality_articles)} high-quality articles")
 
-            # Store articles in database
+            # Store articles in database and track per-source counts
             stored_count = 0
+            source_stored: dict[str, int] = {}
             for article in high_quality_articles:
                 if self._store_article(article, db):
                     stored_count += 1
+                    source_stored[article.source] = (
+                        source_stored.get(article.source, 0) + 1
+                    )
+
+            # Record source metrics
+            source_fetched: dict[str, int] = {}
+            for article in all_articles:
+                source_fetched[article.source] = (
+                    source_fetched.get(article.source, 0) + 1
+                )
+            self._record_source_metrics(job_id, source_fetched, source_stored, db)
 
             # Update job with success status
             job.status = "completed"
@@ -189,6 +201,29 @@ class PipelineService:
             traceback.print_exc()
             db.rollback()
             return False
+
+    def _record_source_metrics(
+        self,
+        job_id: str,
+        source_fetched: dict[str, int],
+        source_stored: dict[str, int],
+        db: Session,
+    ) -> None:
+        """Record per-source metrics for this scrape run."""
+        try:
+            all_sources = set(source_fetched.keys()) | set(source_stored.keys())
+            for source_name in all_sources:
+                metric = SourceMetric(
+                    run_id=job_id,
+                    source_name=source_name,
+                    articles_fetched=source_fetched.get(source_name, 0),
+                    articles_stored=source_stored.get(source_name, 0),
+                    timestamp=datetime.utcnow(),
+                )
+                db.add(metric)
+            db.flush()
+        except Exception as e:
+            print(f"Error recording source metrics: {e}")
 
     def _remove_duplicates(
         self, articles: List[PipelineArticle]

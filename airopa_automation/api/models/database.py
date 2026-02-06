@@ -43,6 +43,27 @@ class Article(Base):
         )
 
 
+class SourceMetric(Base):
+    """
+    Source metric model - tracks per-source stats per scrape run
+    """
+
+    __tablename__ = "source_metrics"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    run_id = Column(String, nullable=False, index=True)  # Job ID of the scrape run
+    source_name = Column(String, nullable=False, index=True)
+    articles_fetched = Column(Integer, nullable=False, default=0)
+    articles_stored = Column(Integer, nullable=False, default=0)
+    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (
+            f"<SourceMetric(run_id='{self.run_id}', "
+            f"source='{self.source_name}', fetched={self.articles_fetched})>"
+        )
+
+
 class Job(Base):
     """
     Job model - tracks background jobs (scraping, processing, etc.)

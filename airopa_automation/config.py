@@ -23,8 +23,16 @@ class ScraperConfig(BaseModel):
         "https://european-champions.org",
     ]
     max_articles_per_source: int = 10
+    max_article_age_days: int = int(os.getenv("MAX_ARTICLE_AGE_DAYS", "30"))
     rate_limit_delay: float = 1.0  # seconds between requests
     user_agent: str = "AIropaBot/1.0 (+https://airopa.eu)"
+    # Source name normalization mapping
+    source_name_map: dict[str, str] = {
+        "https://sifted.eu": "Sifted",
+        "Sifted - News, Analysis and Opinion on European Startups": "Sifted",
+        "Deeptech - Tech.eu": "Tech.eu",
+        "Robotics - Tech.eu": "Tech.eu",
+    }
 
 
 class AIConfig(BaseModel):

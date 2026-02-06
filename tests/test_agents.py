@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from airopa_automation.agents import (
@@ -319,6 +319,115 @@ class TestScraperAgent:
 
         assert content == "Article content here"
         assert image_url is None
+
+    def test_normalize_source_name_known_duplicate(self):
+        """Test source normalization maps known duplicates"""
+        scraper = ScraperAgent()
+        assert scraper._normalize_source_name("https://sifted.eu") == "Sifted"
+        assert scraper._normalize_source_name("Deeptech - Tech.eu") == "Tech.eu"
+        assert scraper._normalize_source_name("Robotics - Tech.eu") == "Tech.eu"
+
+    def test_normalize_source_name_unknown_passthrough(self):
+        """Test source normalization passes through unknown names"""
+        scraper = ScraperAgent()
+        assert scraper._normalize_source_name("Unknown Source") == "Unknown Source"
+
+    def test_is_article_too_old_recent(self):
+        """Test that recent articles are not filtered"""
+        scraper = ScraperAgent()
+        recent = datetime.now(timezone.utc) - timedelta(days=5)
+        assert scraper._is_article_too_old(recent) is False
+
+    def test_is_article_too_old_stale(self):
+        """Test that old articles are filtered"""
+        scraper = ScraperAgent()
+        old = datetime.now(timezone.utc) - timedelta(days=60)
+        assert scraper._is_article_too_old(old) is True
+
+    def test_is_article_too_old_none_date(self):
+        """Test that articles with no date are not filtered"""
+        scraper = ScraperAgent()
+        assert scraper._is_article_too_old(None) is False
+
+    def test_is_article_too_old_naive_datetime(self):
+        """Test that naive datetime is handled correctly"""
+        scraper = ScraperAgent()
+        old_naive = datetime.now() - timedelta(days=60)
+        assert scraper._is_article_too_old(old_naive) is True
+
+    def test_is_article_too_old_boundary(self):
+        """Test boundary: exactly at the max age limit"""
+        scraper = ScraperAgent()
+        boundary = datetime.now(timezone.utc) - timedelta(days=29)
+        assert scraper._is_article_too_old(boundary) is False
+
+    @patch("airopa_automation.agents.feedparser.parse")
+    @patch("airopa_automation.agents.ScraperAgent._extract_article_data")
+    def test_scrape_rss_feeds_normalizes_source(self, mock_extract, mock_parse):
+        """Test that RSS scraping normalizes source names"""
+        mock_extract.return_value = ("content", None)
+        mock_feed = MagicMock()
+        mock_feed.feed.get.return_value = "https://sifted.eu"
+        mock_entry = MagicMock()
+        mock_entry.get.side_effect = lambda key, default="": {
+            "title": "Test",
+            "link": "https://example.com/article",
+            "summary": "",
+            "published": "",
+        }.get(key, default)
+        mock_feed.entries = [mock_entry]
+        mock_parse.return_value = mock_feed
+
+        with patch("airopa_automation.agents.config") as mock_config:
+            mock_config.scraper.rss_feeds = ["https://sifted.eu/feed"]
+            mock_config.scraper.max_articles_per_source = 10
+            mock_config.scraper.max_article_age_days = 30
+            mock_config.scraper.rate_limit_delay = 0
+            mock_config.scraper.user_agent = "Test"
+            mock_config.scraper.source_name_map = {
+                "https://sifted.eu": "Sifted",
+            }
+
+            scraper = ScraperAgent()
+            articles = scraper.scrape_rss_feeds()
+
+            assert len(articles) == 1
+            assert articles[0].source == "Sifted"
+
+    @patch("airopa_automation.agents.feedparser.parse")
+    @patch("airopa_automation.agents.ScraperAgent._extract_article_data")
+    def test_scrape_rss_feeds_skips_stale_articles(self, mock_extract, mock_parse):
+        """Test that RSS scraping skips articles older than max age"""
+        mock_extract.return_value = ("content", None)
+        mock_feed = MagicMock()
+        mock_feed.feed.get.return_value = "Test Source"
+
+        old_date = (datetime.now(timezone.utc) - timedelta(days=60)).strftime(
+            "%a, %d %b %Y %H:%M:%S %z"
+        )
+
+        mock_entry = MagicMock()
+        mock_entry.get.side_effect = lambda key, default="": {
+            "title": "Old Article",
+            "link": "https://example.com/old",
+            "summary": "",
+            "published": old_date,
+        }.get(key, default)
+        mock_feed.entries = [mock_entry]
+        mock_parse.return_value = mock_feed
+
+        with patch("airopa_automation.agents.config") as mock_config:
+            mock_config.scraper.rss_feeds = ["https://test.com/feed"]
+            mock_config.scraper.max_articles_per_source = 10
+            mock_config.scraper.max_article_age_days = 30
+            mock_config.scraper.rate_limit_delay = 0
+            mock_config.scraper.user_agent = "Test"
+            mock_config.scraper.source_name_map = {}
+
+            scraper = ScraperAgent()
+            articles = scraper.scrape_rss_feeds()
+
+            assert len(articles) == 0
 
 
 class TestContentGeneratorAgent:

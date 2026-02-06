@@ -23,16 +23,50 @@ class ScraperConfig(BaseModel):
         "https://european-champions.org",
     ]
     max_articles_per_source: int = 10
+    max_article_age_days: int = int(os.getenv("MAX_ARTICLE_AGE_DAYS", "30"))
     rate_limit_delay: float = 1.0  # seconds between requests
     user_agent: str = "AIropaBot/1.0 (+https://airopa.eu)"
+    # Source name normalization mapping
+    source_name_map: dict[str, str] = {
+        "https://sifted.eu": "Sifted",
+        "Sifted - News, Analysis and Opinion on European Startups": "Sifted",
+        "Deeptech - Tech.eu": "Tech.eu",
+        "Robotics - Tech.eu": "Tech.eu",
+    }
 
 
 class AIConfig(BaseModel):
-    model: str = "llama3-70b-8192"
-    temperature: float = 0.7
+    # LLM provider: "groq" or "mistral"
+    provider: str = os.getenv("LLM_PROVIDER", "groq")
+    temperature: float = 0.3
     max_tokens: int = 1024
-    api_key: str = os.getenv("GROQ_API_KEY", "")
-    # Note: AI features will be limited due to Python 3.13 compatibility issues
+    # Groq
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    groq_model: str = "llama-3.3-70b-versatile"
+    # Mistral
+    mistral_api_key: str = os.getenv("MISTRAL_API_KEY", "")
+    mistral_model: str = "mistral-small-latest"
+    # Feature flags — control LLM rollout via env vars
+    classification_enabled: bool = (
+        os.getenv("LLM_CLASSIFICATION_ENABLED", "false").lower() == "true"
+    )
+    summary_enabled: bool = os.getenv("LLM_SUMMARY_ENABLED", "false").lower() == "true"
+    quality_enabled: bool = os.getenv("LLM_QUALITY_ENABLED", "false").lower() == "true"
+    shadow_mode: bool = os.getenv("LLM_SHADOW_MODE", "true").lower() == "true"
+
+    @property
+    def api_key(self) -> str:
+        """Return API key for the active provider."""
+        if self.provider == "mistral":
+            return self.mistral_api_key
+        return self.groq_api_key
+
+    @property
+    def model(self) -> str:
+        """Return model name for the active provider."""
+        if self.provider == "mistral":
+            return self.mistral_model
+        return self.groq_model
 
 
 class DatabaseConfig(BaseModel):

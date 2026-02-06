@@ -1,8 +1,9 @@
 # AIropa Automation Agents - Base Classes
 
 import hashlib
+import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -14,6 +15,8 @@ from pydantic import BaseModel
 from slugify import slugify
 
 from airopa_automation.config import config
+
+logger = logging.getLogger(__name__)
 
 
 class Article(BaseModel):
@@ -27,6 +30,7 @@ class Article(BaseModel):
     category: str = ""
     country: str = ""
     quality_score: float = 0.0
+    eu_relevance: float = 0.0
     image_url: Optional[str] = None
 
     def generate_hash(self) -> str:
@@ -46,6 +50,29 @@ class ScraperAgent:
             }
         )
 
+    def _normalize_source_name(self, raw_source: str) -> str:
+        """Normalize source name using config mapping.
+
+        Deduplicates sources like "https://sifted.eu" and "Sifted" into
+        a single canonical name.
+        """
+        return config.scraper.source_name_map.get(raw_source, raw_source)
+
+    def _is_article_too_old(self, published_date: Optional[datetime]) -> bool:
+        """Check if article is older than the configured max age.
+
+        Returns True if the article should be skipped.
+        Articles with no published_date are NOT skipped (we can't tell).
+        """
+        if not published_date:
+            return False
+        max_age = timedelta(days=config.scraper.max_article_age_days)
+        now = datetime.now(timezone.utc)
+        # Make published_date offset-aware if it's naive
+        if published_date.tzinfo is None:
+            published_date = published_date.replace(tzinfo=timezone.utc)
+        return (now - published_date) > max_age
+
     def scrape_rss_feeds(self) -> List[Article]:
         """Scrape articles from RSS feeds"""
         articles = []
@@ -53,9 +80,22 @@ class ScraperAgent:
         for feed_url in config.scraper.rss_feeds:
             try:
                 feed = feedparser.parse(feed_url)
+                raw_source = feed.feed.get("title", feed_url)
+                source_name = self._normalize_source_name(raw_source)
 
                 for entry in feed.entries[: config.scraper.max_articles_per_source]:
                     try:
+                        published_date = self._parse_date(entry.get("published", ""))
+
+                        # Skip stale articles
+                        if self._is_article_too_old(published_date):
+                            logger.info(
+                                "Skipping stale article: %s (published %s)",
+                                entry.get("title", "unknown"),
+                                published_date,
+                            )
+                            continue
+
                         content, image_url = self._extract_article_data(
                             entry.get("link", "")
                         )
@@ -67,10 +107,10 @@ class ScraperAgent:
                         article = Article(
                             title=entry.get("title", "No title"),
                             url=entry.get("link", ""),
-                            source=feed.feed.get("title", feed_url),
+                            source=source_name,
                             content=content,
                             summary=entry.get("summary", ""),
-                            published_date=self._parse_date(entry.get("published", "")),
+                            published_date=published_date,
                             scraped_date=datetime.now(),
                             image_url=image_url,
                         )
@@ -235,15 +275,104 @@ class ScraperAgent:
 
 
 class CategoryClassifierAgent:
+    CLASSIFICATION_PROMPT = """You are a news classifier for AIropa, \
+a European AI/tech news platform.
+
+Classify this article into exactly ONE category:
+- startups: Startup funding, launches, acquisitions, founder stories
+- policy: EU regulation, government AI policy, ethics, governance
+- research: Academic papers, technical breakthroughs, deep tech
+- industry: Enterprise AI adoption, corporate partnerships, big tech in Europe
+
+Also identify the primary European country (or "Europe" if multiple/pan-European).
+Rate the European relevance from 0-10 (10 = deeply European, 0 = not European at all).
+
+Article:
+Title: {title}
+Content: {content}
+
+Respond in JSON only:
+{{"category": "startups", "country": "Germany", "eu_relevance": 8}}"""
+
     def __init__(self):
-        # Initialize AI client (will be implemented)
         pass
 
     def classify(self, article: Article) -> Article:
-        """Classify article into appropriate category"""
-        # This will use AI/ML for classification
-        # For now, implement basic keyword-based classification
+        """Classify article using LLM if enabled, with keyword fallback.
 
+        Behavior depends on feature flags:
+        - classification_enabled=False: keywords only (current default)
+        - classification_enabled=True, shadow_mode=True: run both,
+          log LLM result, apply keyword result to article
+        - classification_enabled=True, shadow_mode=False: use LLM result,
+          fall back to keywords on failure
+        """
+        if not config.ai.classification_enabled:
+            return self._classify_with_keywords(article)
+
+        llm_result = self._classify_with_llm(article)
+
+        if config.ai.shadow_mode:
+            # Shadow mode: log LLM result but keep keyword output
+            if llm_result:
+                logger.info(
+                    "Shadow classification for '%s': "
+                    "llm=%s/%s/eu%.1f, using keywords instead",
+                    article.title[:60],
+                    llm_result.category,
+                    llm_result.country,
+                    llm_result.eu_relevance,
+                )
+            return self._classify_with_keywords(article)
+
+        # Live mode: use LLM result, fall back to keywords
+        if llm_result and llm_result.valid:
+            article.category = llm_result.category
+            article.country = llm_result.country
+            article.eu_relevance = llm_result.eu_relevance
+            return article
+
+        logger.warning(
+            "LLM classification failed for '%s', falling back to keywords",
+            article.title[:60],
+        )
+        return self._classify_with_keywords(article)
+
+    def _classify_with_llm(self, article: Article):
+        """Classify article using LLM. Returns ClassificationResult or None."""
+        from airopa_automation.llm import llm_complete
+        from airopa_automation.llm_schemas import parse_classification
+
+        prompt = self.CLASSIFICATION_PROMPT.format(
+            title=article.title,
+            content=article.content[:1500],
+        )
+
+        result = llm_complete(prompt)
+
+        if result["status"] != "ok":
+            logger.warning(
+                "LLM call failed for '%s': %s - %s",
+                article.title[:60],
+                result["status"],
+                result["error"],
+            )
+            return None
+
+        parsed = parse_classification(result["text"])
+
+        if not parsed.valid:
+            logger.warning(
+                "LLM response validation failed for '%s': %s",
+                article.title[:60],
+                parsed.fallback_reason,
+            )
+            return None
+
+        return parsed
+
+    def _classify_with_keywords(self, article: Article) -> Article:
+        """Keyword-based classification fallback."""
         title_lower = article.title.lower()
         content_lower = article.content.lower()
 
@@ -259,12 +388,12 @@ class CategoryClassifierAgent:
         ):
             article.category = "policy"
         elif any(
-            country in title_lower or country in content_lower
-            for country in ["france", "germany", "netherlands", "europe", "eu"]
+            keyword in title_lower or keyword in content_lower
+            for keyword in ["research", "paper", "study", "breakthrough"]
         ):
-            article.category = "country"
+            article.category = "research"
         else:
-            article.category = "stories"
+            article.category = "industry"
 
         # Country classification
         if "france" in title_lower or "france" in content_lower:

@@ -23,9 +23,10 @@ class Article(Base):
     url = Column(String, unique=True, index=True, nullable=False)
     title = Column(String, nullable=False)
     source = Column(String, nullable=False)
-    category = Column(String, nullable=False)  # startups, policy, country, stories
+    category = Column(String, nullable=False)  # startups, policy, research, industry
     country = Column(String, nullable=True)
     quality_score = Column(Float, nullable=False)
+    eu_relevance = Column(Float, nullable=True)  # European relevance score 0-10
     content_hash = Column(String, unique=True, nullable=False)
     content = Column(Text, nullable=True)  # Full article content
     summary = Column(Text, nullable=True)  # Article summary
@@ -40,6 +41,27 @@ class Article(Base):
         return (
             f"<Article(id={self.id}, title='{self.title}', "
             f"category='{self.category}')>"
+        )
+
+
+class SourceMetric(Base):
+    """
+    Source metric model - tracks per-source stats per scrape run
+    """
+
+    __tablename__ = "source_metrics"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    run_id = Column(String, nullable=False, index=True)  # Job ID of the scrape run
+    source_name = Column(String, nullable=False, index=True)
+    articles_fetched = Column(Integer, nullable=False, default=0)
+    articles_stored = Column(Integer, nullable=False, default=0)
+    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (
+            f"<SourceMetric(run_id='{self.run_id}', "
+            f"source='{self.source_name}', fetched={self.articles_fetched})>"
         )
 
 

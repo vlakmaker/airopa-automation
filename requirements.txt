@@ -7,8 +7,9 @@ lxml_html_clean==0.1.1
 playwright==1.40.0
 beautifulsoup4==4.12.2
 
-# AI/ML for content classification (using alternative packages for Python 3.13 compatibility)
-# groq==1.0.0  # Disabled due to Python 3.13 compatibility issues
+# AI/ML for content classification
+groq>=0.9.0
+mistralai>=1.0.0
 python-dotenv==1.0.0
 
 # Database and storage

@@ -132,7 +132,246 @@ class TestCategoryClassifierAgent:
 
         result = classifier.classify(article)
 
-        assert result.category == "stories"
+        assert result.category == "industry"
+
+    def test_classify_research_category(self):
+        """Test classification of research-related content"""
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="New Research Paper on Neural Networks",
+            url="http://test.com",
+            source="Test",
+            content="A breakthrough study in deep learning.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "research"
+
+    def test_classify_industry_category(self):
+        """Test classification of industry-related content"""
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Tech Giant Deploys AI Platform",
+            url="http://test.com",
+            source="Test",
+            content="A major technology deployment across the enterprise.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "industry"
+
+    @patch("airopa_automation.agents.config")
+    def test_classify_uses_keywords_when_llm_disabled(self, mock_config):
+        """Test that classify uses keywords when LLM is disabled"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Startup Raises Funding",
+            url="http://test.com",
+            source="Test",
+            content="A startup company received investment.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "startups"
+
+    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.CategoryClassifierAgent._classify_with_llm")
+    def test_classify_shadow_mode_logs_llm_uses_keywords(self, mock_llm, mock_config):
+        """Test shadow mode: runs LLM but applies keyword result"""
+        mock_config.ai.classification_enabled = True
+        mock_config.ai.shadow_mode = True
+
+        mock_llm_result = MagicMock()
+        mock_llm_result.category = "policy"
+        mock_llm_result.country = "Germany"
+        mock_llm_result.eu_relevance = 9.0
+        mock_llm.return_value = mock_llm_result
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Startup Raises Funding",
+            url="http://test.com",
+            source="Test",
+            content="A startup company received investment.",
+        )
+
+        result = classifier.classify(article)
+
+        # Shadow mode: keyword result is used, not LLM
+        assert result.category == "startups"
+        mock_llm.assert_called_once()
+
+    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.CategoryClassifierAgent._classify_with_llm")
+    def test_classify_live_mode_uses_llm(self, mock_llm, mock_config):
+        """Test live mode: uses LLM result when valid"""
+        mock_config.ai.classification_enabled = True
+        mock_config.ai.shadow_mode = False
+
+        mock_llm_result = MagicMock()
+        mock_llm_result.valid = True
+        mock_llm_result.category = "policy"
+        mock_llm_result.country = "France"
+        mock_llm_result.eu_relevance = 8.5
+        mock_llm.return_value = mock_llm_result
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Random Title",
+            url="http://test.com",
+            source="Test",
+            content="Some content.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "policy"
+        assert result.country == "France"
+        assert result.eu_relevance == 8.5
+
+    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.CategoryClassifierAgent._classify_with_llm")
+    def test_classify_live_mode_fallback_on_invalid_llm(self, mock_llm, mock_config):
+        """Test live mode: falls back to keywords when LLM returns invalid"""
+        mock_config.ai.classification_enabled = True
+        mock_config.ai.shadow_mode = False
+
+        mock_llm_result = MagicMock()
+        mock_llm_result.valid = False
+        mock_llm.return_value = mock_llm_result
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Startup Raises Funding",
+            url="http://test.com",
+            source="Test",
+            content="A startup company received investment.",
+        )
+
+        result = classifier.classify(article)
+
+        # Falls back to keyword classification
+        assert result.category == "startups"
+
+    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.CategoryClassifierAgent._classify_with_llm")
+    def test_classify_live_mode_fallback_on_none(self, mock_llm, mock_config):
+        """Test live mode: falls back to keywords when LLM returns None"""
+        mock_config.ai.classification_enabled = True
+        mock_config.ai.shadow_mode = False
+        mock_llm.return_value = None
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Government Policy Update",
+            url="http://test.com",
+            source="Test",
+            content="New regulation proposed by government.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "policy"
+
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_classify_with_llm_success(self, mock_config, mock_llm_complete):
+        """Test _classify_with_llm with successful LLM response"""
+        mock_config.ai.classification_enabled = True
+        mock_llm_complete.return_value = {
+            "status": "ok",
+            "text": '{"category": "research", "country": "Germany", "eu_relevance": 7}',
+        }
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="AI Breakthrough",
+            url="http://test.com",
+            source="Test",
+            content="A new research paper on transformers.",
+        )
+
+        result = classifier._classify_with_llm(article)
+
+        assert result is not None
+        assert result.valid is True
+        assert result.category == "research"
+        assert result.country == "Germany"
+        assert result.eu_relevance == 7.0
+
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_classify_with_llm_api_error(self, mock_config, mock_llm_complete):
+        """Test _classify_with_llm returns None on API error"""
+        mock_config.ai.classification_enabled = True
+        mock_llm_complete.return_value = {
+            "status": "api_error",
+            "text": "",
+            "error": "Rate limited",
+        }
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Test",
+            content="Content.",
+        )
+
+        result = classifier._classify_with_llm(article)
+
+        assert result is None
+
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_classify_with_llm_invalid_json(self, mock_config, mock_llm_complete):
+        """Test _classify_with_llm returns None on invalid JSON from LLM"""
+        mock_config.ai.classification_enabled = True
+        mock_llm_complete.return_value = {
+            "status": "ok",
+            "text": "I think the category is startups",
+        }
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Test",
+            content="Content.",
+        )
+
+        result = classifier._classify_with_llm(article)
+
+        assert result is None
+
+
+class TestArticleEuRelevance:
+    """Test eu_relevance field on Article model"""
+
+    def test_eu_relevance_default(self):
+        """Test eu_relevance defaults to 0.0"""
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Test",
+            content="Content.",
+        )
+        assert article.eu_relevance == 0.0
+
+    def test_eu_relevance_set(self):
+        """Test eu_relevance can be set"""
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Test",
+            content="Content.",
+            eu_relevance=7.5,
+        )
+        assert article.eu_relevance == 7.5
 
 
 class TestQualityScoreAgent:

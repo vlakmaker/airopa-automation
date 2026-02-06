@@ -41,6 +41,7 @@ class ArticleResponse(BaseModel):
     quality_score: float = Field(
         ..., ge=0.0, le=1.0, description="Quality score (0.0-1.0)"
     )
+    image_url: Optional[str] = Field(None, description="Article cover image URL")
     created_at: datetime = Field(..., description="When article was processed")
     published_date: Optional[datetime] = Field(
         None, description="Original publication date"

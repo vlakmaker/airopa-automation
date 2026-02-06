@@ -76,6 +76,7 @@ async def list_articles(
                 category=article.category,
                 country=article.country,
                 quality_score=article.quality_score,
+                image_url=article.image_url,
                 created_at=article.created_at,
                 published_date=article.published_date,
             )
@@ -118,6 +119,7 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
             category=article.category,
             country=article.country,
             quality_score=article.quality_score,
+            image_url=article.image_url,
             created_at=article.created_at,
             published_date=article.published_date,
         )

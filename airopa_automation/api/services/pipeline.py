@@ -169,6 +169,7 @@ class PipelineService:
                 content_hash=content_hash,
                 content=article.content if article.content else None,
                 summary=article.summary if article.summary else None,
+                image_url=article.image_url,
                 published_date=article.published_date,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),

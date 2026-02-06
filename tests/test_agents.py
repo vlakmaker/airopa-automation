@@ -28,6 +28,7 @@ class TestArticle:
         assert article.content == "This is the article content."
         assert article.category == ""
         assert article.quality_score == 0.0
+        assert article.image_url is None
 
     def test_article_generate_hash(self):
         """Test Article hash generation"""
@@ -63,6 +64,7 @@ class TestArticle:
             category="policy",
             country="France",
             quality_score=0.8,
+            image_url="https://example.com/image.jpg",
         )
 
         assert article.summary == "Summary text"
@@ -70,6 +72,7 @@ class TestArticle:
         assert article.category == "policy"
         assert article.country == "France"
         assert article.quality_score == 0.8
+        assert article.image_url == "https://example.com/image.jpg"
 
 
 class TestCategoryClassifierAgent:
@@ -206,6 +209,116 @@ class TestScraperAgent:
             articles = scraper.scrape_rss_feeds()
 
             assert articles == []
+
+    def test_validate_image_url_valid_https(self):
+        """Test validation accepts valid HTTPS URLs"""
+        scraper = ScraperAgent()
+        assert (
+            scraper._validate_image_url("https://example.com/image.jpg")
+            == "https://example.com/image.jpg"
+        )
+
+    def test_validate_image_url_valid_http(self):
+        """Test validation accepts valid HTTP URLs"""
+        scraper = ScraperAgent()
+        assert (
+            scraper._validate_image_url("http://example.com/image.jpg")
+            == "http://example.com/image.jpg"
+        )
+
+    def test_validate_image_url_none(self):
+        """Test validation rejects None"""
+        scraper = ScraperAgent()
+        assert scraper._validate_image_url(None) is None
+
+    def test_validate_image_url_empty(self):
+        """Test validation rejects empty string"""
+        scraper = ScraperAgent()
+        assert scraper._validate_image_url("") is None
+
+    def test_validate_image_url_no_scheme(self):
+        """Test validation rejects URLs without http(s) scheme"""
+        scraper = ScraperAgent()
+        assert scraper._validate_image_url("ftp://example.com/image.jpg") is None
+        assert scraper._validate_image_url("//example.com/image.jpg") is None
+
+    def test_validate_image_url_too_long(self):
+        """Test validation rejects URLs over 2048 characters"""
+        scraper = ScraperAgent()
+        long_url = "https://example.com/" + "a" * 2048
+        assert scraper._validate_image_url(long_url) is None
+
+    def test_validate_image_url_strips_whitespace(self):
+        """Test validation strips whitespace"""
+        scraper = ScraperAgent()
+        assert (
+            scraper._validate_image_url("  https://example.com/img.jpg  ")
+            == "https://example.com/img.jpg"
+        )
+
+    def test_extract_rss_image_media_content(self):
+        """Test RSS image extraction from media:content"""
+        scraper = ScraperAgent()
+        entry = MagicMock()
+        entry.media_content = [{"url": "https://example.com/media.jpg"}]
+        entry.enclosures = []
+
+        result = scraper._extract_rss_image(entry)
+        assert result == "https://example.com/media.jpg"
+
+    def test_extract_rss_image_enclosure(self):
+        """Test RSS image extraction from enclosures"""
+        scraper = ScraperAgent()
+        entry = MagicMock()
+        entry.media_content = None
+        entry.enclosures = [
+            {"type": "image/jpeg", "href": "https://example.com/enc.jpg"}
+        ]
+
+        result = scraper._extract_rss_image(entry)
+        assert result == "https://example.com/enc.jpg"
+
+    def test_extract_rss_image_none(self):
+        """Test RSS image extraction returns None when no images"""
+        scraper = ScraperAgent()
+        entry = MagicMock()
+        entry.media_content = None
+        entry.enclosures = []
+
+        result = scraper._extract_rss_image(entry)
+        assert result is None
+
+    @patch("airopa_automation.agents.NewspaperArticle")
+    def test_extract_article_data_with_image(self, mock_newspaper):
+        """Test _extract_article_data returns content and image URL"""
+        mock_article = MagicMock()
+        mock_article.text = "Article content here"
+        mock_article.top_image = "https://example.com/top.jpg"
+        mock_newspaper.return_value = mock_article
+
+        scraper = ScraperAgent()
+        content, image_url = scraper._extract_article_data(
+            "https://example.com/article"
+        )
+
+        assert content == "Article content here"
+        assert image_url == "https://example.com/top.jpg"
+
+    @patch("airopa_automation.agents.NewspaperArticle")
+    def test_extract_article_data_no_image(self, mock_newspaper):
+        """Test _extract_article_data with no image available"""
+        mock_article = MagicMock()
+        mock_article.text = "Article content here"
+        mock_article.top_image = ""
+        mock_newspaper.return_value = mock_article
+
+        scraper = ScraperAgent()
+        content, image_url = scraper._extract_article_data(
+            "https://example.com/article"
+        )
+
+        assert content == "Article content here"
+        assert image_url is None
 
 
 class TestContentGeneratorAgent:

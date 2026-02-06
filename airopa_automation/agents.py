@@ -27,6 +27,7 @@ class Article(BaseModel):
     category: str = ""
     country: str = ""
     quality_score: float = 0.0
+    image_url: Optional[str] = None
 
     def generate_hash(self) -> str:
         """Generate a unique hash for this article"""
@@ -55,16 +56,23 @@ class ScraperAgent:
 
                 for entry in feed.entries[: config.scraper.max_articles_per_source]:
                     try:
+                        content, image_url = self._extract_article_data(
+                            entry.get("link", "")
+                        )
+
+                        # Fallback: check RSS media:content and enclosures for image
+                        if not image_url:
+                            image_url = self._extract_rss_image(entry)
+
                         article = Article(
                             title=entry.get("title", "No title"),
                             url=entry.get("link", ""),
                             source=feed.feed.get("title", feed_url),
-                            content=self._extract_article_content(
-                                entry.get("link", "")
-                            ),
+                            content=content,
                             summary=entry.get("summary", ""),
                             published_date=self._parse_date(entry.get("published", "")),
                             scraped_date=datetime.now(),
+                            image_url=image_url,
                         )
                         articles.append(article)
 
@@ -143,6 +151,8 @@ class ScraperAgent:
             newspaper_article.download()
             newspaper_article.parse()
 
+            image_url = self._validate_image_url(newspaper_article.top_image)
+
             return Article(
                 title=newspaper_article.title,
                 url=url,
@@ -151,22 +161,63 @@ class ScraperAgent:
                 summary=newspaper_article.summary,
                 published_date=newspaper_article.publish_date,
                 scraped_date=datetime.now(),
+                image_url=image_url,
             )
 
         except Exception as e:
             print(f"Error scraping article page {url}: {e}")
             return None
 
-    def _extract_article_content(self, url: str) -> str:
-        """Extract main content from an article URL"""
+    def _extract_article_data(self, url: str) -> tuple[str, Optional[str]]:
+        """Extract content and image URL from an article URL.
+
+        Returns:
+            Tuple of (article_text, image_url). image_url may be None.
+        """
         try:
             newspaper_article = NewspaperArticle(url)
             newspaper_article.download()
             newspaper_article.parse()
-            return str(newspaper_article.text)
+            image_url = self._validate_image_url(newspaper_article.top_image)
+            return str(newspaper_article.text), image_url
         except Exception as e:
             print(f"Error extracting content from {url}: {e}")
-            return ""
+            return "", None
+
+    def _validate_image_url(self, url: Optional[str]) -> Optional[str]:
+        """Validate and sanitize an image URL.
+
+        Returns the URL if valid, None otherwise.
+        """
+        if not url or not isinstance(url, str):
+            return None
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            return None
+        if len(url) > 2048:
+            return None
+        return url
+
+    def _extract_rss_image(self, entry) -> Optional[str]:
+        """Extract image URL from RSS entry media:content or enclosures."""
+        # media:content
+        media_content = getattr(entry, "media_content", None)
+        if media_content:
+            url = media_content[0].get("url") if media_content else None
+            validated = self._validate_image_url(url)
+            if validated:
+                return validated
+
+        # enclosures
+        enclosures = getattr(entry, "enclosures", None)
+        if enclosures:
+            for enc in enclosures:
+                if enc.get("type", "").startswith("image/"):
+                    validated = self._validate_image_url(enc.get("href"))
+                    if validated:
+                        return validated
+
+        return None
 
     def _parse_date(self, date_str: str) -> Optional[datetime]:
         """Parse various date formats"""

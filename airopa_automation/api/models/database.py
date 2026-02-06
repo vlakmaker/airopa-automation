@@ -29,6 +29,7 @@ class Article(Base):
     content_hash = Column(String, unique=True, nullable=False)
     content = Column(Text, nullable=True)  # Full article content
     summary = Column(Text, nullable=True)  # Article summary
+    image_url = Column(String, nullable=True)  # Article cover image URL
     published_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(

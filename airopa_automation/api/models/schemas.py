@@ -14,6 +14,9 @@ class ArticleCategory(str, Enum):
 
     startups = "startups"
     policy = "policy"
+    research = "research"
+    industry = "industry"
+    # Legacy categories (kept for backward compatibility with older articles)
     country = "country"
     stories = "stories"
 

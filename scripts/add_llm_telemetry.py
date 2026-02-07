@@ -11,44 +11,23 @@ Usage:
 import os
 import sys
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
 
 
 def migrate():
     """Create llm_telemetry table if it doesn't exist."""
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    from airopa_automation.api.models.database import engine  # noqa: E402
+    from airopa_automation.api.models.database import LLMTelemetry  # noqa: F401
+    from airopa_automation.api.models.database import Base, engine  # noqa: E402
 
     inspector = inspect(engine)
     if "llm_telemetry" in inspector.get_table_names():
         print("Table 'llm_telemetry' already exists. Nothing to do.")
         return
 
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                CREATE TABLE llm_telemetry (
-                    id INTEGER PRIMARY KEY,
-                    run_id VARCHAR NOT NULL,
-                    article_url VARCHAR NOT NULL,
-                    llm_model VARCHAR NOT NULL,
-                    prompt_version VARCHAR NOT NULL,
-                    llm_latency_ms INTEGER NOT NULL DEFAULT 0,
-                    tokens_in INTEGER NOT NULL DEFAULT 0,
-                    tokens_out INTEGER NOT NULL DEFAULT 0,
-                    llm_status VARCHAR NOT NULL,
-                    fallback_reason VARCHAR,
-                    timestamp DATETIME NOT NULL
-                )
-                """
-            )
-        )
-        conn.execute(
-            text("CREATE INDEX ix_llm_telemetry_run_id ON llm_telemetry (run_id)")
-        )
-
+    # Create only the llm_telemetry table
+    Base.metadata.tables["llm_telemetry"].create(bind=engine)
     print("Successfully created 'llm_telemetry' table.")
 
 

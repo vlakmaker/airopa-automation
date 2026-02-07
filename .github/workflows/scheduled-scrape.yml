@@ -50,10 +50,10 @@ jobs:
 
           echo "API is healthy"
 
-      - name: Trigger scrape job
-        id: trigger
+      - name: Run scrape (synchronous)
+        id: scrape
         run: |
-          echo "Triggering scrape job..."
+          echo "Running synchronous scrape..."
 
           # Check if API key is configured
           if [ -z "${{ env.API_KEY }}" ]; then
@@ -61,62 +61,46 @@ jobs:
             exit 1
           fi
 
-          RESPONSE=$(curl -s -X POST "${{ env.API_URL }}/api/scrape" \
+          # Call sync endpoint — waits for pipeline to complete (up to 10 min)
+          HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
+            --max-time 600 \
+            -X POST "${{ env.API_URL }}/api/scrape/sync" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: ${{ env.API_KEY }}")
 
-          echo "Response: $RESPONSE"
+          HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -n1)
+          BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
 
-          # Extract job_id using grep/sed (no jq dependency)
-          JOB_ID=$(echo "$RESPONSE" | grep -o '"job_id":"[^"]*"' | sed 's/"job_id":"//;s/"//')
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response: $BODY"
 
-          if [ -z "$JOB_ID" ]; then
-            echo "::error::Failed to get job ID from response"
+          # Extract fields using grep/sed (no jq dependency)
+          JOB_ID=$(echo "$BODY" | grep -o '"job_id":"[^"]*"' | sed 's/"job_id":"//;s/"//')
+          STATUS=$(echo "$BODY" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')
+          RESULT_COUNT=$(echo "$BODY" | grep -o '"result_count":[0-9]*' | sed 's/"result_count"://')
+          ERROR_MSG=$(echo "$BODY" | grep -o '"error_message":"[^"]*"' | sed 's/"error_message":"//;s/"//')
+
+          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "result_count=$RESULT_COUNT" >> $GITHUB_OUTPUT
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Scrape request failed with HTTP $HTTP_CODE"
+            if [ -n "$ERROR_MSG" ]; then
+              echo "::error::Error: $ERROR_MSG"
+            fi
             exit 1
           fi
 
-          echo "Job ID: $JOB_ID"
-          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-
-      - name: Wait for job completion
-        id: wait
-        run: |
-          JOB_ID="${{ steps.trigger.outputs.job_id }}"
-          MAX_ATTEMPTS=30
-          ATTEMPT=0
-
-          echo "Waiting for job $JOB_ID to complete..."
-
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            echo "Check attempt $ATTEMPT/$MAX_ATTEMPTS..."
-
-            RESPONSE=$(curl -s "${{ env.API_URL }}/api/jobs/$JOB_ID")
-            STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')
-
-            echo "Status: $STATUS"
-
-            if [ "$STATUS" = "completed" ]; then
-              RESULT_COUNT=$(echo "$RESPONSE" | grep -o '"result_count":[0-9]*' | sed 's/"result_count"://')
-              echo "Job completed successfully!"
-              echo "Articles stored: $RESULT_COUNT"
-              echo "result_count=$RESULT_COUNT" >> $GITHUB_OUTPUT
-              echo "status=success" >> $GITHUB_OUTPUT
-              exit 0
-            elif [ "$STATUS" = "failed" ]; then
-              ERROR=$(echo "$RESPONSE" | grep -o '"error_message":"[^"]*"' | sed 's/"error_message":"//;s/"//')
-              echo "::error::Job failed: $ERROR"
-              echo "status=failed" >> $GITHUB_OUTPUT
-              exit 1
-            fi
-
-            # Wait 10 seconds before next check
-            sleep 10
-          done
-
-          echo "::error::Job did not complete within timeout"
-          echo "status=timeout" >> $GITHUB_OUTPUT
-          exit 1
+          if [ "$STATUS" = "completed" ]; then
+            echo "Scrape completed successfully!"
+            echo "Articles stored: $RESULT_COUNT"
+          elif [ "$STATUS" = "failed" ]; then
+            echo "::error::Scrape job failed: $ERROR_MSG"
+            exit 1
+          else
+            echo "::warning::Unexpected job status: $STATUS"
+          fi
 
       - name: Report results
         if: always()
@@ -125,7 +109,7 @@ jobs:
           echo "SCRAPE JOB SUMMARY"
           echo "============================================"
           echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "Job ID: ${{ steps.trigger.outputs.job_id }}"
-          echo "Status: ${{ steps.wait.outputs.status || 'unknown' }}"
-          echo "Articles stored: ${{ steps.wait.outputs.result_count || 'N/A' }}"
+          echo "Job ID: ${{ steps.scrape.outputs.job_id || 'N/A' }}"
+          echo "Status: ${{ steps.scrape.outputs.status || 'unknown' }}"
+          echo "Articles stored: ${{ steps.scrape.outputs.result_count || 'N/A' }}"
           echo "============================================"

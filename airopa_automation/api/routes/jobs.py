@@ -135,17 +135,19 @@ async def trigger_scrape_sync(
         db.rollback()
         # Try to fetch the job — pipeline may have already marked it as failed
         try:
-            job = db.query(DBJob).filter(DBJob.id == job_id).first()
-            if job and job.status == "failed":
+            failed_job = db.query(DBJob).filter(DBJob.id == job_id).first()
+            if failed_job and failed_job.status == "failed":
                 return JSONResponse(
                     status_code=500,
                     content={
-                        "job_id": job.id,
-                        "status": job.status,
-                        "job_type": job.job_type,
-                        "timestamp": job.started_at.isoformat(),
-                        "result_count": job.result_count,
-                        "error_message": job.error_message,
+                        "job_id": failed_job.id,
+                        "status": failed_job.status,
+                        "job_type": failed_job.job_type,
+                        "timestamp": failed_job.started_at.isoformat()
+                        if failed_job.started_at
+                        else None,
+                        "result_count": failed_job.result_count,
+                        "error_message": failed_job.error_message,
                     },
                 )
         except Exception as db_err:

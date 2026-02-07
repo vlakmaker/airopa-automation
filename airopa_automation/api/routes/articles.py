@@ -9,6 +9,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from airopa_automation.config import config
+
 from ..models.database import Article as DBArticle
 from ..models.database import get_db
 from ..models.schemas import (
@@ -51,6 +53,14 @@ async def list_articles(
     try:
         # Build query with filters
         query = db.query(DBArticle)
+
+        # Filter out low-relevance articles (stored but not published)
+        threshold = config.scraper.eu_relevance_threshold
+        if threshold > 0:
+            query = query.filter(
+                (DBArticle.eu_relevance >= threshold)
+                | (DBArticle.eu_relevance.is_(None))
+            )
 
         if category:
             query = query.filter(DBArticle.category == category.value)

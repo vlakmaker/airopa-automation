@@ -261,10 +261,12 @@ class PipelineService:
                 arts = source_articles.get(source_name, [])
                 eu_scores = [a.eu_relevance for a in arts if a.eu_relevance]
                 q_scores = [a.quality_score for a in arts if a.quality_score]
-                cats = {}
+                category_counts: dict[str, int] = {}
                 for a in arts:
                     if a.category:
-                        cats[a.category] = cats.get(a.category, 0) + 1
+                        category_counts[a.category] = (
+                            category_counts.get(a.category, 0) + 1
+                        )
 
                 metric = SourceMetric(
                     run_id=job_id,
@@ -280,7 +282,9 @@ class PipelineService:
                     avg_quality_score=(
                         round(sum(q_scores) / len(q_scores), 2) if q_scores else None
                     ),
-                    category_distribution=json.dumps(cats) if cats else None,
+                    category_distribution=(
+                        json.dumps(category_counts) if category_counts else None
+                    ),
                     timestamp=datetime.utcnow(),
                 )
                 db.add(metric)

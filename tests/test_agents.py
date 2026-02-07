@@ -670,51 +670,88 @@ class TestQualityScoreAgent:
     """Test QualityScoreAgent"""
 
     def test_quality_score_short_content(self):
-        """Test quality score for short content"""
+        """Test low-quality article: short content, no metadata, unknown source"""
         scorer = QualityScoreAgent()
         article = Article(
             title="Short",
             url="http://test.com",
-            source="Test",
+            source="Unknown Blog",
             content="Very short content.",
         )
 
         result = scorer.assess_quality(article)
 
-        assert result.quality_score < 0.5
+        # Only gets: unknown source (0.05) + title 1 word (0.00)
+        assert result.quality_score < 0.4
 
     def test_quality_score_good_content(self):
-        """Test quality score for good content"""
+        """Test high-quality article: long content, metadata, known source"""
         scorer = QualityScoreAgent()
-        long_content = " ".join(["word"] * 600)  # >500 words
+        long_content = " ".join(["word"] * 900)  # 900 words → content depth 0.30
         article = Article(
-            title="A Good Article Title Here",
+            title="A Good Article Title Here With Details",  # 7 words → 0.15
             url="http://test.com",
-            source="Test",
+            source="Sifted",  # Tier 1 → 0.15
             content=long_content,
-            category="policy",
-            country="Europe",
+            category="policy",  # +0.05
+            country="Europe",  # +0.05
+            summary="A summary.",  # +0.05
+            eu_relevance=8.0,  # 7+ → 0.25
         )
 
         result = scorer.assess_quality(article)
 
-        assert result.quality_score > 0.5
+        # 0.30 + 0.25 + 0.15 + 0.15 + 0.15 = 1.0
+        assert result.quality_score > 0.7
 
     def test_quality_score_max_is_one(self):
         """Test that quality score doesn't exceed 1.0"""
         scorer = QualityScoreAgent()
         article = Article(
-            title="Excellent Article With Many Words",
+            title="Excellent Article With Many Words In Title",
             url="http://test.com",
-            source="europa.eu",  # credible source
+            source="Sifted",  # Tier 1
             content=" ".join(["word"] * 1000),
             category="policy",
             country="France",
+            summary="Great summary.",
+            eu_relevance=9.0,
         )
 
         result = scorer.assess_quality(article)
 
         assert result.quality_score <= 1.0
+
+    def test_eu_relevance_impacts_score(self):
+        """Test that eu_relevance increases score across thresholds"""
+        scorer = QualityScoreAgent()
+        base = dict(
+            title="A Five Word Title Here",
+            url="http://test.com",
+            source="Unknown",
+            content=" ".join(["word"] * 500),
+        )
+
+        low = scorer.assess_quality(Article(**base, eu_relevance=1.0))
+        mid = scorer.assess_quality(Article(**base, eu_relevance=5.0))
+        high = scorer.assess_quality(Article(**base, eu_relevance=8.0))
+
+        assert high.quality_score > mid.quality_score > low.quality_score
+
+    def test_source_tier_impacts_score(self):
+        """Test that source credibility tier affects score"""
+        scorer = QualityScoreAgent()
+        base = dict(
+            title="A Five Word Title Here",
+            url="http://test.com",
+            content=" ".join(["word"] * 500),
+        )
+
+        unknown = scorer.assess_quality(Article(**base, source="Random Blog"))
+        tier2 = scorer.assess_quality(Article(**base, source="TNW"))
+        tier1 = scorer.assess_quality(Article(**base, source="Sifted"))
+
+        assert tier1.quality_score > tier2.quality_score > unknown.quality_score
 
 
 class TestScraperAgent:

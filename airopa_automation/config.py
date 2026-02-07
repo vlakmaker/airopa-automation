@@ -12,10 +12,26 @@ load_dotenv()
 
 class ScraperConfig(BaseModel):
     rss_feeds: list[str] = [
+        # Existing sources
         "https://sifted.eu/feed/?post_type=article",
         "https://tech.eu/category/deep-tech/feed",
-        "https://european-champions.org/feed",
         "https://tech.eu/category/robotics/feed",
+        "https://european-champions.org/feed",
+        # Tier 1 — European startup/tech ecosystem
+        "https://www.eu-startups.com/feed/",
+        "https://siliconcanals.com/feed/",
+        "https://tech.eu/category/artificial-intelligence/feed",
+        "https://thenextweb.com/feed",
+        "https://www.wired.com/feed/tag/ai/latest/rss",
+        "https://www.siliconrepublic.com/feed",
+        # Tier 2 — Policy, regulation, funding
+        "https://algorithmwatch.org/en/feed/",
+        "https://www.euractiv.com/feed/",
+        "https://www.artificiallawyer.com/feed/",
+        "https://techfundingnews.com/feed/",
+        # Tier 3 — Research and academic
+        "https://deepmind.com/blog/feed/basic/",
+        "https://huggingface.co/blog/feed.xml",
     ]
     web_sources: list[str] = [
         "https://sifted.eu",
@@ -23,15 +39,34 @@ class ScraperConfig(BaseModel):
         "https://european-champions.org",
     ]
     max_articles_per_source: int = 10
+    # Articles with eu_relevance below this are stored but hidden from API
+    eu_relevance_threshold: float = float(os.getenv("EU_RELEVANCE_THRESHOLD", "3.0"))
     max_article_age_days: int = int(os.getenv("MAX_ARTICLE_AGE_DAYS", "30"))
     rate_limit_delay: float = 1.0  # seconds between requests
     user_agent: str = "AIropaBot/1.0 (+https://airopa.eu)"
-    # Source name normalization mapping
+    # Source name normalization mapping (RSS feed title → canonical name)
     source_name_map: dict[str, str] = {
+        # Existing
         "https://sifted.eu": "Sifted",
         "Sifted - News, Analysis and Opinion on European Startups": "Sifted",
         "Deeptech - Tech.eu": "Tech.eu",
         "Robotics - Tech.eu": "Tech.eu",
+        "Artificial Intelligence - Tech.eu": "Tech.eu",
+        # Tier 1
+        "EU-Startups": "EU-Startups",
+        "Silicon Canals": "Silicon Canals",
+        "The Next Web": "The Next Web",
+        "Feed: Artificial Intelligence Latest": "WIRED",
+        "Silicon Republic": "Silicon Republic",
+        # Tier 2
+        "AlgorithmWatch": "AlgorithmWatch",
+        "Euractiv": "EURACTIV",
+        "EURACTIV": "EURACTIV",
+        "Artificial Lawyer": "Artificial Lawyer",
+        "Tech Funding News": "Tech Funding News",
+        # Tier 3
+        "Google DeepMind News": "DeepMind",
+        "Hugging Face - Blog": "Hugging Face",
     }
 
 

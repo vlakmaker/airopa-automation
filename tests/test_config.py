@@ -11,15 +11,19 @@ def test_scraper_config_defaults():
     """Test ScraperConfig default values"""
     config = ScraperConfig()
 
-    assert len(config.rss_feeds) == 4  # Updated to 4 RSS feeds
-    assert len(config.web_sources) == 3  # Updated to 3 web sources
+    assert len(config.rss_feeds) == 16  # 4 existing + 6 Tier 1 + 4 Tier 2 + 2 Tier 3
+    assert len(config.web_sources) == 3
     assert config.max_articles_per_source == 10
     assert config.rate_limit_delay == 1.0
     assert "AIropaBot" in config.user_agent
-    # Test that the new URLs are present
+    assert config.eu_relevance_threshold == 3.0
+    # Test that source URLs are present across tiers
     assert any("sifted.eu" in url for url in config.rss_feeds)
     assert any("tech.eu" in url for url in config.rss_feeds)
     assert any("european-champions.org" in url for url in config.rss_feeds)
+    assert any("eu-startups.com" in url for url in config.rss_feeds)
+    assert any("algorithmwatch.org" in url for url in config.rss_feeds)
+    assert any("deepmind.com" in url for url in config.rss_feeds)
 
 
 def test_scraper_config_custom():
@@ -109,3 +113,38 @@ def test_config_override():
     assert config.git.author_name == "Custom Bot"
     # Other defaults should remain
     assert config.database.db_path == "database/airopa.db"
+
+
+def test_source_name_map_covers_all_tiers():
+    """Test that source_name_map has entries for all expected sources"""
+    config = ScraperConfig()
+    mapped_names = set(config.source_name_map.values())
+
+    # Tier 1
+    assert "EU-Startups" in mapped_names
+    assert "Silicon Canals" in mapped_names
+    assert "The Next Web" in mapped_names
+    assert "WIRED" in mapped_names
+    assert "Silicon Republic" in mapped_names
+
+    # Tier 2
+    assert "AlgorithmWatch" in mapped_names
+    assert "EURACTIV" in mapped_names
+    assert "Artificial Lawyer" in mapped_names
+    assert "Tech Funding News" in mapped_names
+
+    # Tier 3
+    assert "DeepMind" in mapped_names
+    assert "Hugging Face" in mapped_names
+
+
+def test_eu_relevance_threshold_default():
+    """Test default eu_relevance threshold is 3.0"""
+    config = ScraperConfig()
+    assert config.eu_relevance_threshold == 3.0
+
+
+def test_eu_relevance_threshold_custom():
+    """Test eu_relevance threshold can be customized"""
+    config = ScraperConfig(eu_relevance_threshold=5.0)
+    assert config.eu_relevance_threshold == 5.0

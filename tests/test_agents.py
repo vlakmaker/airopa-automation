@@ -7,6 +7,7 @@ from airopa_automation.agents import (
     ContentGeneratorAgent,
     QualityScoreAgent,
     ScraperAgent,
+    SummarizerAgent,
 )
 
 
@@ -486,6 +487,183 @@ class TestArticleEuRelevance:
             eu_relevance=7.5,
         )
         assert article.eu_relevance == 7.5
+
+
+class TestSummarizerAgent:
+    """Test SummarizerAgent"""
+
+    @patch("airopa_automation.agents.config")
+    def test_summarize_disabled_returns_unchanged(self, mock_config):
+        """Test that summarize does nothing when summary_enabled is False"""
+        mock_config.ai.summary_enabled = False
+
+        summarizer = SummarizerAgent()
+        article = Article(
+            title="Test Article",
+            url="http://test.com",
+            source="Test",
+            content="A" * 500,
+        )
+
+        result = summarizer.summarize(article)
+
+        assert result.summary == ""
+        assert summarizer.last_telemetry is None
+
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_summarize_with_llm_success(self, mock_config, mock_llm):
+        """Test successful LLM summarization"""
+        mock_config.ai.summary_enabled = True
+        mock_config.ai.shadow_mode = False
+        mock_llm.return_value = {
+            "status": "ok",
+            "text": "The startup raised funding for AI. This matters for Europe.",
+            "model": "llama-3.3-70b-versatile",
+            "latency_ms": 300,
+            "tokens_in": 600,
+            "tokens_out": 40,
+        }
+
+        summarizer = SummarizerAgent()
+        article = Article(
+            title="Startup Raises Funding",
+            url="http://test.com/article",
+            source="Test",
+            content="A" * 500,
+        )
+
+        result = summarizer.summarize(article)
+
+        assert "startup raised funding" in result.summary.lower()
+
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_summarize_with_llm_failure_returns_empty(self, mock_config, mock_llm):
+        """Test that LLM failure leaves summary empty"""
+        mock_config.ai.summary_enabled = True
+        mock_config.ai.shadow_mode = False
+        mock_llm.return_value = {
+            "status": "api_error",
+            "text": "",
+            "error": "Rate limited",
+            "model": "llama-3.3-70b-versatile",
+            "latency_ms": 100,
+            "tokens_in": 0,
+            "tokens_out": 0,
+        }
+
+        summarizer = SummarizerAgent()
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Test",
+            content="A" * 500,
+        )
+
+        result = summarizer.summarize(article)
+
+        assert result.summary == ""
+
+    @patch("airopa_automation.agents.config")
+    def test_summarize_skips_short_content(self, mock_config):
+        """Test that articles with short content are skipped"""
+        mock_config.ai.summary_enabled = True
+
+        summarizer = SummarizerAgent()
+        article = Article(
+            title="Short Article",
+            url="http://test.com",
+            source="Test",
+            content="Too short.",
+        )
+
+        result = summarizer.summarize(article)
+
+        assert result.summary == ""
+        assert summarizer.last_telemetry is None
+
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_summarize_telemetry_on_success(self, mock_config, mock_llm):
+        """Test that last_telemetry is populated after successful summary"""
+        mock_config.ai.summary_enabled = True
+        mock_config.ai.shadow_mode = False
+        mock_llm.return_value = {
+            "status": "ok",
+            "text": "A valid summary sentence.",
+            "model": "llama-3.3-70b-versatile",
+            "latency_ms": 250,
+            "tokens_in": 500,
+            "tokens_out": 30,
+        }
+
+        summarizer = SummarizerAgent()
+        article = Article(
+            title="Test",
+            url="http://test.com/telem",
+            source="Test",
+            content="A" * 500,
+        )
+
+        summarizer.summarize(article)
+
+        assert summarizer.last_telemetry is not None
+        assert summarizer.last_telemetry["article_url"] == "http://test.com/telem"
+        assert summarizer.last_telemetry["prompt_version"] == "summary_v1"
+        assert summarizer.last_telemetry["llm_status"] == "ok"
+        assert summarizer.last_telemetry["fallback_reason"] is None
+
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_summarize_telemetry_on_failure(self, mock_config, mock_llm):
+        """Test that last_telemetry captures fallback_reason on failure"""
+        mock_config.ai.summary_enabled = True
+        mock_config.ai.shadow_mode = False
+        mock_llm.return_value = {
+            "status": "api_error",
+            "text": "",
+            "error": "Timeout",
+            "model": "llama-3.3-70b-versatile",
+            "latency_ms": 5000,
+            "tokens_in": 0,
+            "tokens_out": 0,
+        }
+
+        summarizer = SummarizerAgent()
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Test",
+            content="A" * 500,
+        )
+
+        summarizer.summarize(article)
+
+        assert summarizer.last_telemetry is not None
+        assert summarizer.last_telemetry["llm_status"] == "api_error"
+        assert "Timeout" in summarizer.last_telemetry["fallback_reason"]
+
+    @patch("airopa_automation.agents.SummarizerAgent._summarize_with_llm")
+    @patch("airopa_automation.agents.config")
+    def test_summarize_shadow_mode_does_not_apply(self, mock_config, mock_llm):
+        """Test shadow mode: runs LLM but does not apply summary"""
+        mock_config.ai.summary_enabled = True
+        mock_config.ai.shadow_mode = True
+        mock_llm.return_value = "A shadow summary."
+
+        summarizer = SummarizerAgent()
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Test",
+            content="A" * 500,
+        )
+
+        result = summarizer.summarize(article)
+
+        assert result.summary == ""
+        mock_llm.assert_called_once()
 
 
 class TestQualityScoreAgent:

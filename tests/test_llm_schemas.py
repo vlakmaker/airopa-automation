@@ -1,7 +1,9 @@
 from airopa_automation.llm_schemas import (
     VALID_CATEGORIES,
     ClassificationResult,
+    SummaryResult,
     parse_classification,
+    parse_summary,
 )
 
 
@@ -142,3 +144,95 @@ class TestClassificationResult:
         r = ClassificationResult("", "", 0.0, valid=False, fallback_reason="test")
         assert r.valid is False
         assert r.fallback_reason == "test"
+
+
+class TestParseSummary:
+    """Test LLM summary response parsing"""
+
+    def test_valid_two_sentence_summary(self):
+        """Test valid 2-sentence summary"""
+        result = parse_summary(
+            "The startup raised €10M for AI innovation. "
+            "This is significant for European deep tech."
+        )
+        assert result.valid is True
+        assert "startup raised" in result.text
+
+    def test_valid_three_sentence_summary(self):
+        """Test valid 3-sentence summary"""
+        result = parse_summary(
+            "Company X launched a new product. "
+            "It targets the European market. "
+            "The funding round was led by a Berlin-based VC."
+        )
+        assert result.valid is True
+
+    def test_empty_string_rejected(self):
+        """Test empty string triggers fallback"""
+        result = parse_summary("")
+        assert result.valid is False
+        assert result.fallback_reason == "empty_summary"
+
+    def test_whitespace_only_rejected(self):
+        """Test whitespace-only triggers fallback"""
+        result = parse_summary("   ")
+        assert result.valid is False
+        assert result.fallback_reason == "empty_summary"
+
+    def test_none_rejected(self):
+        """Test None triggers fallback"""
+        result = parse_summary(None)
+        assert result.valid is False
+        assert result.fallback_reason == "empty_summary"
+
+    def test_markdown_heading_rejected(self):
+        """Test markdown headings are rejected"""
+        result = parse_summary("## Summary\nThe startup raised funding.")
+        assert result.valid is False
+        assert result.fallback_reason == "contains_formatting"
+
+    def test_markdown_bold_rejected(self):
+        """Test markdown bold is rejected"""
+        result = parse_summary("The **startup** raised funding.")
+        assert result.valid is False
+        assert result.fallback_reason == "contains_formatting"
+
+    def test_html_tags_rejected(self):
+        """Test HTML tags are rejected"""
+        result = parse_summary("<p>The startup raised funding.</p>")
+        assert result.valid is False
+        assert result.fallback_reason == "contains_formatting"
+
+    def test_too_many_sentences_rejected(self):
+        """Test summaries with >5 sentences are rejected"""
+        text = ". ".join([f"Sentence {i}" for i in range(7)]) + "."
+        result = parse_summary(text)
+        assert result.valid is False
+        assert result.fallback_reason == "too_long"
+
+    def test_strips_wrapping_quotes(self):
+        """Test that wrapping quotes are stripped"""
+        result = parse_summary('"A valid summary sentence."')
+        assert result.valid is True
+        assert result.text == "A valid summary sentence."
+
+    def test_single_sentence_valid(self):
+        """Test single sentence is valid"""
+        result = parse_summary("The EU AI Act was approved.")
+        assert result.valid is True
+
+
+class TestSummaryResult:
+    """Test SummaryResult dataclass"""
+
+    def test_default_valid(self):
+        """Test default valid state"""
+        r = SummaryResult(text="A summary.", valid=True)
+        assert r.valid is True
+        assert r.text == "A summary."
+
+    def test_invalid_with_reason(self):
+        """Test invalid state with reason"""
+        r = SummaryResult(valid=False, fallback_reason="empty_summary")
+        assert r.valid is False
+        assert r.fallback_reason == "empty_summary"

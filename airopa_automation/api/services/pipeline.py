@@ -16,6 +16,7 @@ from airopa_automation.agents import (
     CategoryClassifierAgent,
     QualityScoreAgent,
     ScraperAgent,
+    SummarizerAgent,
 )
 from airopa_automation.budget import TokenBudget
 from airopa_automation.config import config, ensure_directories
@@ -37,6 +38,7 @@ class PipelineService:
 
         self.scraper = ScraperAgent()
         self.classifier = CategoryClassifierAgent()
+        self.summarizer = SummarizerAgent()
         self.quality_assessor = QualityScoreAgent()
 
     def run_scrape_job(self, job_id: str) -> None:  # noqa: C901
@@ -104,6 +106,36 @@ class PipelineService:
                 f"Classified {len(classified_articles)} articles "
                 f"(tokens used: {budget.tokens_used})"
             )
+
+            # Step 2.5: Summarize articles (with budget tracking)
+            summary_skipped = 0
+            for article in classified_articles:
+                try:
+                    if budget.exceeded and config.ai.summary_enabled:
+                        if summary_skipped == 0:
+                            print(
+                                f"Token budget exceeded ({budget.tokens_used}/"
+                                f"{budget.max_tokens}), skipping summaries "
+                                f"for remaining articles"
+                            )
+                        summary_skipped += 1
+                    else:
+                        self.summarizer.summarize(article)
+                    if self.summarizer.last_telemetry:
+                        telem = self.summarizer.last_telemetry
+                        telemetry_rows.append(telem)
+                        budget.record(telem["tokens_in"], telem["tokens_out"])
+                except Exception as e:
+                    print(f"Error summarizing article {article.title}: {e}")
+                    continue
+            summarized_count = len([a for a in classified_articles if a.summary])
+            if summary_skipped:
+                print(f"Budget: {summary_skipped} articles skipped " f"summarization")
+            if config.ai.summary_enabled:
+                print(
+                    f"Summarized {summarized_count}/{len(classified_articles)}"
+                    f" articles (tokens used: {budget.tokens_used})"
+                )
 
             # Persist LLM telemetry
             self._record_telemetry(job_id, telemetry_rows, db)

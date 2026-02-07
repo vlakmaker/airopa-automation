@@ -1,12 +1,14 @@
 """
 LLM response schema validation.
 
-Parses and validates JSON responses from LLM classification calls.
-Returns typed results with safe defaults on validation failure.
+Parses and validates JSON responses from LLM classification and
+summarization calls. Returns typed results with safe defaults on
+validation failure.
 """
 
 import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -108,3 +110,62 @@ def _fallback(reason: str) -> ClassificationResult:
         valid=False,
         fallback_reason=reason,
     )
+
+
+# --- Summary validation ---
+
+
+class SummaryResult:
+    """Validated summary result from LLM."""
+
+    def __init__(
+        self,
+        text: str = "",
+        valid: bool = True,
+        fallback_reason: str = "",
+    ):
+        self.text = text
+        self.valid = valid
+        self.fallback_reason = fallback_reason
+
+
+def parse_summary(raw_text: str) -> SummaryResult:
+    """Parse and validate LLM summary response.
+
+    Validation rules:
+        - Non-empty after stripping
+        - No markdown (headings, bold, links) or HTML tags
+        - Between 1 and 5 sentences
+    """
+    if not raw_text or not raw_text.strip():
+        return SummaryResult(valid=False, fallback_reason="empty_summary")
+
+    text = raw_text.strip()
+
+    # Strip wrapping quotes if present
+    if (text.startswith('"') and text.endswith('"')) or (
+        text.startswith("'") and text.endswith("'")
+    ):
+        text = text[1:-1].strip()
+
+    if not text:
+        return SummaryResult(valid=False, fallback_reason="empty_summary")
+
+    # Reject markdown formatting
+    if re.search(r"^#{1,6}\s", text, re.MULTILINE) or "**" in text:
+        return SummaryResult(valid=False, fallback_reason="contains_formatting")
+
+    # Reject HTML tags
+    if re.search(r"<[a-zA-Z/][^>]*>", text):
+        return SummaryResult(valid=False, fallback_reason="contains_formatting")
+
+    # Count sentences (period/exclamation/question followed by space or end)
+    sentences = re.split(r"[.!?](?:\s|$)", text)
+    # Filter out empty fragments
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if len(sentences) < 1:
+        return SummaryResult(valid=False, fallback_reason="too_short")
+    if len(sentences) > 5:
+        return SummaryResult(valid=False, fallback_reason="too_long")
+
+    return SummaryResult(text=text, valid=True)

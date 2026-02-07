@@ -294,8 +294,10 @@ Content: {content}
 Respond in JSON only:
 {{"category": "startups", "country": "Germany", "eu_relevance": 8}}"""
 
+    PROMPT_VERSION = "classification_v1"
+
     def __init__(self):
-        pass
+        self.last_telemetry = None  # Telemetry from most recent classify call
 
     def classify(self, article: Article) -> Article:
         """Classify article using LLM if enabled, with keyword fallback.
@@ -306,7 +308,11 @@ Respond in JSON only:
           log LLM result, apply keyword result to article
         - classification_enabled=True, shadow_mode=False: use LLM result,
           fall back to keywords on failure
+
+        After calling, check self.last_telemetry for LLM call details.
         """
+        self.last_telemetry = None
+
         if not config.ai.classification_enabled:
             return self._classify_with_keywords(article)
 
@@ -339,7 +345,10 @@ Respond in JSON only:
         return self._classify_with_keywords(article)
 
     def _classify_with_llm(self, article: Article):
-        """Classify article using LLM. Returns ClassificationResult or None."""
+        """Classify article using LLM. Returns ClassificationResult or None.
+
+        Sets self.last_telemetry with LLM call details.
+        """
         from airopa_automation.llm import llm_complete
         from airopa_automation.llm_schemas import parse_classification
 
@@ -350,7 +359,22 @@ Respond in JSON only:
 
         result = llm_complete(prompt)
 
+        # Build telemetry dict for persistence
+        self.last_telemetry = {
+            "article_url": article.url,
+            "llm_model": result.get("model", ""),
+            "prompt_version": self.PROMPT_VERSION,
+            "llm_latency_ms": result.get("latency_ms", 0),
+            "tokens_in": result.get("tokens_in", 0),
+            "tokens_out": result.get("tokens_out", 0),
+            "llm_status": result.get("status", "unknown"),
+            "fallback_reason": None,
+        }
+
         if result["status"] != "ok":
+            self.last_telemetry[
+                "fallback_reason"
+            ] = f"{result['status']}: {result.get('error', '')}"
             logger.warning(
                 "LLM call failed for '%s': %s - %s",
                 article.title[:60],
@@ -362,6 +386,8 @@ Respond in JSON only:
         parsed = parse_classification(result["text"])
 
         if not parsed.valid:
+            self.last_telemetry["llm_status"] = "parse_error"
+            self.last_telemetry["fallback_reason"] = parsed.fallback_reason
             logger.warning(
                 "LLM response validation failed for '%s': %s",
                 article.title[:60],

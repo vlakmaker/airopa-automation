@@ -1,3 +1,7 @@
+# Environment / secrets
+.env
+.env.*
+
 # Documentation and analysis files
 AGENTS_ANALYSIS.md
 BACKEND_FRONTEND_INTEGRATION_PLAN.md

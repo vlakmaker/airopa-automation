@@ -53,6 +53,8 @@ class AIConfig(BaseModel):
     summary_enabled: bool = os.getenv("LLM_SUMMARY_ENABLED", "false").lower() == "true"
     quality_enabled: bool = os.getenv("LLM_QUALITY_ENABLED", "false").lower() == "true"
     shadow_mode: bool = os.getenv("LLM_SHADOW_MODE", "true").lower() == "true"
+    # Budget: max total tokens (in+out) per scrape run. 0 = unlimited.
+    budget_max_tokens_per_run: int = int(os.getenv("LLM_BUDGET_MAX_TOKENS", "50000"))
 
     @property
     def api_key(self) -> str:

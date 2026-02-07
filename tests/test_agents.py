@@ -348,6 +348,120 @@ class TestCategoryClassifierAgent:
 
         assert result is None
 
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_classify_with_llm_sets_telemetry_on_success(
+        self, mock_config, mock_llm_complete
+    ):
+        """Test that last_telemetry is populated after successful LLM call"""
+        mock_config.ai.classification_enabled = True
+        mock_llm_complete.return_value = {
+            "status": "ok",
+            "text": '{"category": "policy", "country": "France", "eu_relevance": 8}',
+            "model": "llama-3.3-70b-versatile",
+            "latency_ms": 250,
+            "tokens_in": 500,
+            "tokens_out": 30,
+        }
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="EU AI Act Update",
+            url="http://test.com/ai-act",
+            source="Test",
+            content="The EU AI Act regulation update.",
+        )
+
+        classifier._classify_with_llm(article)
+
+        assert classifier.last_telemetry is not None
+        assert classifier.last_telemetry["article_url"] == "http://test.com/ai-act"
+        assert classifier.last_telemetry["llm_model"] == "llama-3.3-70b-versatile"
+        assert classifier.last_telemetry["llm_status"] == "ok"
+        assert classifier.last_telemetry["tokens_in"] == 500
+        assert classifier.last_telemetry["tokens_out"] == 30
+        assert classifier.last_telemetry["llm_latency_ms"] == 250
+        assert classifier.last_telemetry["prompt_version"] == "classification_v1"
+        assert classifier.last_telemetry["fallback_reason"] is None
+
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_classify_with_llm_sets_telemetry_on_api_error(
+        self, mock_config, mock_llm_complete
+    ):
+        """Test that last_telemetry captures fallback_reason on API error"""
+        mock_config.ai.classification_enabled = True
+        mock_llm_complete.return_value = {
+            "status": "api_error",
+            "text": "",
+            "error": "Rate limited",
+            "model": "llama-3.3-70b-versatile",
+            "latency_ms": 100,
+            "tokens_in": 0,
+            "tokens_out": 0,
+        }
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Test",
+            content="Content.",
+        )
+
+        classifier._classify_with_llm(article)
+
+        assert classifier.last_telemetry is not None
+        assert classifier.last_telemetry["llm_status"] == "api_error"
+        assert "Rate limited" in classifier.last_telemetry["fallback_reason"]
+
+    @patch("airopa_automation.llm.llm_complete")
+    @patch("airopa_automation.agents.config")
+    def test_classify_with_llm_sets_telemetry_on_parse_error(
+        self, mock_config, mock_llm_complete
+    ):
+        """Test that last_telemetry captures parse_error status"""
+        mock_config.ai.classification_enabled = True
+        mock_llm_complete.return_value = {
+            "status": "ok",
+            "text": "not json at all",
+            "model": "llama-3.3-70b-versatile",
+            "latency_ms": 200,
+            "tokens_in": 400,
+            "tokens_out": 10,
+        }
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Test",
+            url="http://test.com",
+            source="Test",
+            content="Content.",
+        )
+
+        classifier._classify_with_llm(article)
+
+        assert classifier.last_telemetry is not None
+        assert classifier.last_telemetry["llm_status"] == "parse_error"
+        assert classifier.last_telemetry["fallback_reason"] is not None
+
+    @patch("airopa_automation.agents.config")
+    def test_classify_resets_telemetry_for_keyword_only(self, mock_config):
+        """Test that last_telemetry is None when LLM is not enabled"""
+        mock_config.ai.classification_enabled = False
+
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Startup Raises Funding",
+            url="http://test.com",
+            source="Test",
+            content="A startup company received investment.",
+        )
+
+        classifier.classify(article)
+
+        assert classifier.last_telemetry is None
+
 
 class TestArticleEuRelevance:
     """Test eu_relevance field on Article model"""

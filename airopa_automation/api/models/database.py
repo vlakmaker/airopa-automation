@@ -56,12 +56,45 @@ class SourceMetric(Base):
     source_name = Column(String, nullable=False, index=True)
     articles_fetched = Column(Integer, nullable=False, default=0)
     articles_stored = Column(Integer, nullable=False, default=0)
+    articles_passed_relevance = Column(Integer, nullable=True)  # eu_relevance >= 3.0
+    avg_eu_relevance = Column(Float, nullable=True)
+    avg_quality_score = Column(Float, nullable=True)
+    category_distribution = Column(Text, nullable=True)  # JSON string
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     def __repr__(self):
         return (
             f"<SourceMetric(run_id='{self.run_id}', "
             f"source='{self.source_name}', fetched={self.articles_fetched})>"
+        )
+
+
+class LLMTelemetry(Base):
+    """
+    LLM telemetry - tracks per-article LLM call results
+    for observability and cost analysis
+    """
+
+    __tablename__ = "llm_telemetry"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    run_id = Column(String, nullable=False, index=True)  # Job ID of the scrape run
+    article_url = Column(String, nullable=False)
+    llm_model = Column(String, nullable=False)
+    prompt_version = Column(String, nullable=False)  # e.g. "classification_v1"
+    llm_latency_ms = Column(Integer, nullable=False, default=0)
+    tokens_in = Column(Integer, nullable=False, default=0)
+    tokens_out = Column(Integer, nullable=False, default=0)
+    llm_status = Column(
+        String, nullable=False
+    )  # ok, no_api_key, api_error, timeout, etc.
+    fallback_reason = Column(String, nullable=True)  # null if LLM succeeded
+    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (
+            f"<LLMTelemetry(run_id='{self.run_id}', "
+            f"article='{self.article_url[:40]}', status='{self.llm_status}')>"
         )
 
 

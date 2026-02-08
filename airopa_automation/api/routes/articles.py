@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from airopa_automation.config import config
@@ -81,8 +82,14 @@ async def list_articles(
         total = query.count()
 
         # Apply pagination and ordering (most recent first)
+        # Prefer published_date, fall back to created_at
         articles = (
-            query.order_by(DBArticle.created_at.desc())
+            query.order_by(
+                func.coalesce(
+                    DBArticle.published_date,
+                    DBArticle.created_at,
+                ).desc()
+            )
             .offset(offset)
             .limit(limit)
             .all()

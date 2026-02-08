@@ -4,6 +4,7 @@ from airopa_automation.llm_schemas import (
     SummaryResult,
     parse_classification,
     parse_summary,
+    validate_classification,
 )
 
 
@@ -129,6 +130,76 @@ class TestParseClassification:
         assert result.valid is True
         assert result.country == ""
 
+    def test_confidence_parsed(self):
+        """Test confidence is parsed from response"""
+        result = parse_classification(
+            '{"category": "startups", "country": "Germany",'
+            ' "eu_relevance": 8, "confidence": 0.85}'
+        )
+        assert result.valid is True
+        assert result.confidence == 0.85
+
+    def test_confidence_missing_defaults_zero(self):
+        """Test missing confidence defaults to 0"""
+        result = parse_classification(
+            '{"category": "startups", "country": "Germany", "eu_relevance": 8}'
+        )
+        assert result.valid is True
+        assert result.confidence == 0.0
+
+    def test_confidence_clamped(self):
+        """Test confidence is clamped to 0-1"""
+        result = parse_classification(
+            '{"category": "startups", "country": "Germany",'
+            ' "eu_relevance": 8, "confidence": 1.5}'
+        )
+        assert result.confidence == 1.0
+
+    def test_other_category_accepted(self):
+        """Test that 'other' is a valid category"""
+        result = parse_classification(
+            '{"category": "other", "country": "", "eu_relevance": 0, "confidence": 0.9}'
+        )
+        assert result.valid is True
+        assert result.category == "other"
+
+
+class TestValidateClassification:
+    """Test post-validation rules"""
+
+    def test_low_confidence_demoted(self):
+        """Test low confidence demotes to other"""
+        r = ClassificationResult("startups", "Germany", 8.0, confidence=0.3)
+        result = validate_classification(r)
+        assert result.category == "other"
+        assert result.eu_relevance == 0.0
+
+    def test_adequate_confidence_kept(self):
+        """Test adequate confidence is kept"""
+        r = ClassificationResult("startups", "Germany", 8.0, confidence=0.7)
+        result = validate_classification(r)
+        assert result.category == "startups"
+
+    def test_low_eu_relevance_demoted(self):
+        """Test very low EU relevance demotes to other"""
+        r = ClassificationResult("industry", "", 1.0, confidence=0.8)
+        result = validate_classification(r)
+        assert result.category == "other"
+        assert result.eu_relevance == 0.0
+
+    def test_other_forces_zero_eu_relevance(self):
+        """Test 'other' category forces eu_relevance to 0"""
+        r = ClassificationResult("other", "", 5.0, confidence=0.9)
+        result = validate_classification(r)
+        assert result.category == "other"
+        assert result.eu_relevance == 0.0
+
+    def test_invalid_result_passthrough(self):
+        """Test invalid result passes through unchanged"""
+        r = ClassificationResult("", "", 0.0, valid=False, fallback_reason="test")
+        result = validate_classification(r)
+        assert result.valid is False
+
 
 class TestClassificationResult:
     """Test ClassificationResult dataclass"""
@@ -138,6 +209,7 @@ class TestClassificationResult:
         r = ClassificationResult("startups", "Germany", 8.0)
         assert r.valid is True
         assert r.fallback_reason == ""
+        assert r.confidence == 0.0
 
     def test_invalid_with_reason(self):
         """Test invalid state with reason"""
@@ -220,6 +292,18 @@ class TestParseSummary:
         """Test single sentence is valid"""
         result = parse_summary("The EU AI Act was approved.")
         assert result.valid is True
+
+    def test_not_relevant_signal(self):
+        """Test NOT_RELEVANT signal is accepted"""
+        result = parse_summary("NOT_RELEVANT")
+        assert result.valid is True
+        assert result.text == "NOT_RELEVANT"
+
+    def test_not_relevant_case_insensitive(self):
+        """Test NOT_RELEVANT is case-insensitive"""
+        result = parse_summary("Not Relevant")
+        assert result.valid is True
+        assert result.text == "NOT_RELEVANT"
 
 
 class TestSummaryResult:

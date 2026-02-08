@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,6 +20,21 @@ from airopa_automation.config import config
 logger = logging.getLogger(__name__)
 
 
+def clean_content(raw: str) -> str:
+    """Strip residual HTML tags and collapse whitespace.
+
+    Uses BeautifulSoup to extract text from any HTML fragments
+    left by newspaper3k extraction or RSS feed descriptions.
+    """
+    if not raw:
+        return ""
+    soup = BeautifulSoup(raw, "html.parser")
+    text = soup.get_text(separator=" ")
+    text = re.sub(r"https?://\S+\.(jpg|jpeg|png|gif|webp|svg)\S*", "", text)
+    text = " ".join(text.split())
+    return text.strip()
+
+
 class Article(BaseModel):
     title: str
     url: str
@@ -31,6 +47,7 @@ class Article(BaseModel):
     country: str = ""
     quality_score: float = 0.0
     eu_relevance: float = 0.0
+    confidence: float = 0.0
     image_url: Optional[str] = None
 
     def generate_hash(self) -> str:
@@ -275,26 +292,65 @@ class ScraperAgent:
 
 
 class CategoryClassifierAgent:
-    CLASSIFICATION_PROMPT = """You are a news classifier for AIropa, \
-a European AI/tech news platform.
+    CLASSIFICATION_PROMPT = """You are an editorial classifier for AIropa, \
+a European AI and technology news platform.
 
-Classify this article into exactly ONE category:
-- startups: Startup funding, launches, acquisitions, founder stories
-- policy: EU regulation, government AI policy, ethics, governance
-- research: Academic papers, technical breakthroughs, deep tech
-- industry: Enterprise AI adoption, corporate partnerships, big tech in Europe
+Your job is to classify articles AND filter out irrelevant content.
 
-Also identify the primary European country (or "Europe" if multiple/pan-European).
-Rate the European relevance from 0-10 (10 = deeply European, 0 = not European at all).
+STEP 1: RELEVANCE CHECK
+Is this article about AI, technology, startups, tech policy, or digital innovation?
+If NO -> set category to "other", country to "", eu_relevance to 0, confidence to 0.9.
 
-Article:
+STEP 2: CLASSIFY into exactly ONE category based on the PRIMARY focus:
+- startups: Funding rounds, product launches, acquisitions, founder stories
+- policy: Regulation, government policy, AI ethics, governance, legal frameworks
+- research: Academic papers, technical breakthroughs, new models, benchmarks
+- industry: Enterprise adoption, corporate partnerships, market analysis, big tech moves
+- other: Not relevant to AI/tech (lifestyle, psychology, generic business)
+
+Tiebreaker rules:
+- Regulation affecting startups -> "policy" (the regulation is the news)
+- New model from a startup -> "startups" (funding/company is the angle)
+- New model from a research lab -> "research" (the science is the angle)
+- Technical blog post / tutorial -> "research"
+
+STEP 3: EUROPEAN RELEVANCE (0-10)
+- 8-10: European company, EU policy, European research lab
+- 5-7: Global story with meaningful European angle
+- 2-4: Primarily US/global story with minor European mention
+- 0-1: No European connection at all
+Be strict. A US company story reported by a European outlet is NOT European news.
+
+STEP 4: COUNTRY
+Use full country name: "France", "Germany", "Netherlands", etc.
+Use "Europe" ONLY if genuinely pan-European (EU-wide policy, multi-country).
+Use "" (empty) if not European.
+
+STEP 5: CONFIDENCE (0.0-1.0)
+Rate your confidence in this classification.
+
+EXAMPLES:
+Source: Sifted
+Title: "French AI startup Mistral raises EUR 400M Series B"
+{{"category": "startups", "country": "France", "eu_relevance": 9, "confidence": 0.95}}
+
+Title: "EU AI Act enforcement timeline announced"
+{{"category": "policy", "country": "Europe", "eu_relevance": 10, "confidence": 0.95}}
+
+Title: "OpenAI launches GPT-5 with improved reasoning"
+{{"category": "industry", "country": "", "eu_relevance": 1, "confidence": 0.9}}
+
+Title: "Psychology says people who enjoy grocery shopping alone possess these traits"
+{{"category": "other", "country": "", "eu_relevance": 0, "confidence": 0.95}}
+
+Source: {source}
 Title: {title}
 Content: {content}
 
 Respond in JSON only:
-{{"category": "startups", "country": "Germany", "eu_relevance": 8}}"""
+{{"category": "...", "country": "...", "eu_relevance": N, "confidence": N.N}}"""
 
-    PROMPT_VERSION = "classification_v1"
+    PROMPT_VERSION = "classification_v2"
 
     def __init__(self):
         self.last_telemetry = None  # Telemetry from most recent classify call
@@ -336,6 +392,7 @@ Respond in JSON only:
             article.category = llm_result.category
             article.country = llm_result.country
             article.eu_relevance = llm_result.eu_relevance
+            article.confidence = llm_result.confidence
             return article
 
         logger.warning(
@@ -350,11 +407,15 @@ Respond in JSON only:
         Sets self.last_telemetry with LLM call details.
         """
         from airopa_automation.llm import llm_complete
-        from airopa_automation.llm_schemas import parse_classification
+        from airopa_automation.llm_schemas import (
+            parse_classification,
+            validate_classification,
+        )
 
         prompt = self.CLASSIFICATION_PROMPT.format(
             title=article.title,
-            content=article.content[:1500],
+            content=clean_content(article.content)[:1500],
+            source=article.source,
         )
 
         result = llm_complete(prompt)
@@ -394,6 +455,9 @@ Respond in JSON only:
                 parsed.fallback_reason,
             )
             return None
+
+        # Apply post-validation business rules
+        parsed = validate_classification(parsed, article.title)
 
         return parsed
 
@@ -439,16 +503,28 @@ Respond in JSON only:
 class SummarizerAgent:
     """Generate 2-3 sentence editorial summaries with European angle."""
 
-    SUMMARY_PROMPT = """Summarize this European AI/tech news article in 2-3 sentences.
-Focus on: what happened, who's involved, why it matters for Europe.
-Do not introduce facts not present in the article.
+    SUMMARY_PROMPT = """\
+You are a news editor for AIropa, a European AI and technology platform.
 
+Write a 2-3 sentence summary of this article for a news card.
+The summary should help a reader decide whether to click through.
+
+Rules:
+- State what happened, who is involved, and why it matters
+- If the article has a European angle, emphasize it
+- If the article is not about AI or technology, write exactly: NOT_RELEVANT
+- Do NOT include any HTML tags, image URLs, or markup in your summary
+- Do NOT invent or introduce facts not present in the article
+- Do NOT repeat the title as the first sentence
+- Write in plain text only
+
+Source: {source}
 Title: {title}
 Content: {content}
 
 Summary:"""
 
-    PROMPT_VERSION = "summary_v1"
+    PROMPT_VERSION = "summary_v2"
     MIN_CONTENT_LENGTH = 200  # Skip articles with very short content
 
     def __init__(self):
@@ -491,6 +567,12 @@ Summary:"""
 
         # Live mode: apply summary if valid
         if summary_text:
+            if summary_text == "NOT_RELEVANT":
+                logger.info(
+                    "Summarizer flagged '%s' as not relevant",
+                    article.title[:60],
+                )
+                return article
             article.summary = summary_text
 
         return article
@@ -505,7 +587,8 @@ Summary:"""
 
         prompt = self.SUMMARY_PROMPT.format(
             title=article.title,
-            content=article.content[:2000],
+            content=clean_content(article.content)[:2000],
+            source=article.source,
         )
 
         result = llm_complete(prompt)

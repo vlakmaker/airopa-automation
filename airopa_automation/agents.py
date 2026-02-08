@@ -36,7 +36,7 @@ class Article(BaseModel):
     def generate_hash(self) -> str:
         """Generate a unique hash for this article"""
         hash_input = f"{self.title}{self.url}{self.source}".encode("utf-8")
-        return hashlib.sha256(hash_input).hexdigest()
+        return str(hashlib.sha256(hash_input).hexdigest())
 
 
 class ScraperAgent:

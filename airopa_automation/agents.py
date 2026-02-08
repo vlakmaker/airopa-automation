@@ -31,8 +31,8 @@ def clean_content(raw: str) -> str:
     soup = BeautifulSoup(raw, "html.parser")
     text = soup.get_text(separator=" ")
     text = re.sub(r"https?://\S+\.(jpg|jpeg|png|gif|webp|svg)\S*", "", text)
-    text = " ".join(text.split())
-    return text.strip()
+    cleaned: str = " ".join(text.split())
+    return cleaned.strip()
 
 
 class Article(BaseModel):

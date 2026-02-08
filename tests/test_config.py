@@ -11,7 +11,7 @@ def test_scraper_config_defaults():
     """Test ScraperConfig default values"""
     config = ScraperConfig()
 
-    assert len(config.rss_feeds) == 16  # 4 existing + 6 Tier 1 + 4 Tier 2 + 2 Tier 3
+    assert len(config.rss_feeds) == 15  # 4 existing + 5 Tier 1 + 4 Tier 2 + 2 Tier 3
     assert len(config.web_sources) == 3
     assert config.max_articles_per_source == 10
     assert config.rate_limit_delay == 1.0
@@ -122,7 +122,6 @@ def test_source_name_map_covers_all_tiers():
 
     # Tier 1
     assert "EU-Startups" in mapped_names
-    assert "Silicon Canals" in mapped_names
     assert "The Next Web" in mapped_names
     assert "WIRED" in mapped_names
     assert "Silicon Republic" in mapped_names

@@ -275,26 +275,55 @@ class ScraperAgent:
 
 
 class CategoryClassifierAgent:
-    CLASSIFICATION_PROMPT = """You are a news classifier for AIropa, \
-a European AI/tech news platform.
+    CLASSIFICATION_PROMPT = """You are an editorial classifier for AIropa, a European AI and technology news platform.
 
-Classify this article into exactly ONE category:
-- startups: Startup funding, launches, acquisitions, founder stories
-- policy: EU regulation, government AI policy, ethics, governance
-- research: Academic papers, technical breakthroughs, deep tech
-- industry: Enterprise AI adoption, corporate partnerships, big tech in Europe
+Your job is to classify articles AND filter out irrelevant content.
 
-Also identify the primary European country (or "Europe" if multiple/pan-European).
-Rate the European relevance from 0-10 (10 = deeply European, 0 = not European at all).
+STEP 1: RELEVANCE CHECK
+Is this article about AI, technology, startups, tech policy, or digital innovation?
+If NO → set eu_relevance to 0, category to "industry", country to "".
+Do not try to force-fit non-tech content into a category.
+
+STEP 2: EUROPEAN RELEVANCE (only if Step 1 passes)
+Rate 0-10 how relevant this is to the European tech ecosystem:
+- 8-10: European company, EU policy, European research lab, or European market focus
+- 5-7: Global story with meaningful European angle (European office, EU impact mentioned)
+- 2-4: Primarily US/global story with minor European mention
+- 0-1: No European connection
+
+STEP 3: CLASSIFY into exactly ONE category based on the PRIMARY focus:
+- startups: Funding rounds, product launches, acquisitions, founder stories of startups
+- policy: Regulation, government policy, AI ethics, governance, legal frameworks
+- research: Academic papers, technical breakthroughs, new models, benchmarks
+- industry: Enterprise adoption, corporate partnerships, market analysis, established companies
+
+When in doubt: if the article is about a regulation affecting startups, classify as "policy" (the regulation is the news). If it's about a startup responding to regulation, classify as "startups" (the company is the news).
+
+STEP 4: COUNTRY
+Identify the primary European country. Use "Europe" only if genuinely pan-European (e.g., EU-wide policy). Use "" if not European.
+
+Examples:
+
+Title: "French AI startup Mistral raises €400M Series B"
+{{"category": "startups", "country": "France", "eu_relevance": 10}}
+
+Title: "EU AI Act enforcement timeline announced by Commission"
+{{"category": "policy", "country": "Europe", "eu_relevance": 10}}
+
+Title: "OpenAI launches new model with improved reasoning"
+{{"category": "industry", "country": "", "eu_relevance": 1}}
+
+Title: "Psychology says introverts have these 8 habits"
+{{"category": "industry", "country": "", "eu_relevance": 0}}
 
 Article:
 Title: {title}
 Content: {content}
 
 Respond in JSON only:
-{{"category": "startups", "country": "Germany", "eu_relevance": 8}}"""
+{{"category": "...", "country": "...", "eu_relevance": ...}}"""
 
-    PROMPT_VERSION = "classification_v1"
+    PROMPT_VERSION = "classification_v2"
 
     def __init__(self):
         self.last_telemetry = None  # Telemetry from most recent classify call
@@ -439,16 +468,26 @@ Respond in JSON only:
 class SummarizerAgent:
     """Generate 2-3 sentence editorial summaries with European angle."""
 
-    SUMMARY_PROMPT = """Summarize this European AI/tech news article in 2-3 sentences.
-Focus on: what happened, who's involved, why it matters for Europe.
-Do not introduce facts not present in the article.
+    SUMMARY_PROMPT = """You are a news editor for AIropa, a European AI and technology platform.
+
+Write a 2-3 sentence summary of this article for a news card.
+The summary should help a reader decide whether to click through to the original article.
+
+Rules:
+- State what happened, who is involved, and why it matters
+- If the article has a European angle, emphasize it
+- If the article is not about AI or technology, write: "NOT_RELEVANT"
+- Do NOT include any HTML tags, image URLs, or markup
+- Do NOT invent facts not present in the article
+- Do NOT repeat the title as the first sentence
+- Write in plain text only
 
 Title: {title}
 Content: {content}
 
 Summary:"""
 
-    PROMPT_VERSION = "summary_v1"
+    PROMPT_VERSION = "summary_v2"
     MIN_CONTENT_LENGTH = 200  # Skip articles with very short content
 
     def __init__(self):

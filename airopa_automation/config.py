@@ -19,7 +19,6 @@ class ScraperConfig(BaseModel):
         "https://european-champions.org/feed",
         # Tier 1 — European startup/tech ecosystem
         "https://www.eu-startups.com/feed/",
-        "https://siliconcanals.com/feed/",
         "https://tech.eu/category/artificial-intelligence/feed",
         "https://thenextweb.com/feed",
         "https://www.wired.com/feed/tag/ai/latest/rss",
@@ -54,7 +53,6 @@ class ScraperConfig(BaseModel):
         "Artificial Intelligence - Tech.eu": "Tech.eu",
         # Tier 1
         "EU-Startups": "EU-Startups",
-        "Silicon Canals": "Silicon Canals",
         "The Next Web": "The Next Web",
         "Feed: Artificial Intelligence Latest": "WIRED",
         "Silicon Republic": "Silicon Republic",

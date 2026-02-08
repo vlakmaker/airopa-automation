@@ -76,10 +76,12 @@ class TestArticle:
         assert article.image_url == "https://example.com/image.jpg"
 
 
+@patch("airopa_automation.agents.config")
 class TestCategoryClassifierAgent:
-    """Test CategoryClassifierAgent"""
+    """Test CategoryClassifierAgent keyword fallback"""
 
-    def test_classify_startup_category(self):
+    def test_classify_startup_category(self, mock_config):
+        mock_config.ai.classification_enabled = False
         """Test classification of startup-related content"""
         classifier = CategoryClassifierAgent()
         article = Article(
@@ -93,8 +95,9 @@ class TestCategoryClassifierAgent:
 
         assert result.category == "startups"
 
-    def test_classify_policy_category(self):
+    def test_classify_policy_category(self, mock_config):
         """Test classification of policy-related content"""
+        mock_config.ai.classification_enabled = False
         classifier = CategoryClassifierAgent()
         article = Article(
             title="New AI Regulation Proposed",
@@ -107,8 +110,9 @@ class TestCategoryClassifierAgent:
 
         assert result.category == "policy"
 
-    def test_classify_country(self):
+    def test_classify_country(self, mock_config):
         """Test country classification"""
+        mock_config.ai.classification_enabled = False
         classifier = CategoryClassifierAgent()
         article = Article(
             title="AI Development in France",
@@ -121,8 +125,9 @@ class TestCategoryClassifierAgent:
 
         assert result.country == "France"
 
-    def test_classify_default_category(self):
+    def test_classify_default_category(self, mock_config):
         """Test default category for unclassified content"""
+        mock_config.ai.classification_enabled = False
         classifier = CategoryClassifierAgent()
         article = Article(
             title="Random Title",
@@ -135,8 +140,9 @@ class TestCategoryClassifierAgent:
 
         assert result.category == "industry"
 
-    def test_classify_research_category(self):
+    def test_classify_research_category(self, mock_config):
         """Test classification of research-related content"""
+        mock_config.ai.classification_enabled = False
         classifier = CategoryClassifierAgent()
         article = Article(
             title="New Research Paper on Neural Networks",
@@ -149,8 +155,9 @@ class TestCategoryClassifierAgent:
 
         assert result.category == "research"
 
-    def test_classify_industry_category(self):
+    def test_classify_industry_category(self, mock_config):
         """Test classification of industry-related content"""
+        mock_config.ai.classification_enabled = False
         classifier = CategoryClassifierAgent()
         article = Article(
             title="Tech Giant Deploys AI Platform",
@@ -163,7 +170,6 @@ class TestCategoryClassifierAgent:
 
         assert result.category == "industry"
 
-    @patch("airopa_automation.agents.config")
     def test_classify_uses_keywords_when_llm_disabled(self, mock_config):
         """Test that classify uses keywords when LLM is disabled"""
         mock_config.ai.classification_enabled = False
@@ -179,7 +185,6 @@ class TestCategoryClassifierAgent:
 
         assert result.category == "startups"
 
-    @patch("airopa_automation.agents.config")
     @patch("airopa_automation.agents.CategoryClassifierAgent._classify_with_llm")
     def test_classify_shadow_mode_logs_llm_uses_keywords(self, mock_llm, mock_config):
         """Test shadow mode: runs LLM but applies keyword result"""
@@ -206,7 +211,6 @@ class TestCategoryClassifierAgent:
         assert result.category == "startups"
         mock_llm.assert_called_once()
 
-    @patch("airopa_automation.agents.config")
     @patch("airopa_automation.agents.CategoryClassifierAgent._classify_with_llm")
     def test_classify_live_mode_uses_llm(self, mock_llm, mock_config):
         """Test live mode: uses LLM result when valid"""
@@ -218,6 +222,7 @@ class TestCategoryClassifierAgent:
         mock_llm_result.category = "policy"
         mock_llm_result.country = "France"
         mock_llm_result.eu_relevance = 8.5
+        mock_llm_result.confidence = 0.9
         mock_llm.return_value = mock_llm_result
 
         classifier = CategoryClassifierAgent()
@@ -234,7 +239,6 @@ class TestCategoryClassifierAgent:
         assert result.country == "France"
         assert result.eu_relevance == 8.5
 
-    @patch("airopa_automation.agents.config")
     @patch("airopa_automation.agents.CategoryClassifierAgent._classify_with_llm")
     def test_classify_live_mode_fallback_on_invalid_llm(self, mock_llm, mock_config):
         """Test live mode: falls back to keywords when LLM returns invalid"""
@@ -258,7 +262,6 @@ class TestCategoryClassifierAgent:
         # Falls back to keyword classification
         assert result.category == "startups"
 
-    @patch("airopa_automation.agents.config")
     @patch("airopa_automation.agents.CategoryClassifierAgent._classify_with_llm")
     def test_classify_live_mode_fallback_on_none(self, mock_llm, mock_config):
         """Test live mode: falls back to keywords when LLM returns None"""
@@ -279,13 +282,15 @@ class TestCategoryClassifierAgent:
         assert result.category == "policy"
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
-    def test_classify_with_llm_success(self, mock_config, mock_llm_complete):
+    def test_classify_with_llm_success(self, mock_llm_complete, mock_config):
         """Test _classify_with_llm with successful LLM response"""
         mock_config.ai.classification_enabled = True
         mock_llm_complete.return_value = {
             "status": "ok",
-            "text": '{"category": "research", "country": "Germany", "eu_relevance": 7}',
+            "text": (
+                '{"category": "research", "country": "Germany",'
+                ' "eu_relevance": 7, "confidence": 0.9}'
+            ),
         }
 
         classifier = CategoryClassifierAgent()
@@ -303,10 +308,10 @@ class TestCategoryClassifierAgent:
         assert result.category == "research"
         assert result.country == "Germany"
         assert result.eu_relevance == 7.0
+        assert result.confidence == 0.9
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
-    def test_classify_with_llm_api_error(self, mock_config, mock_llm_complete):
+    def test_classify_with_llm_api_error(self, mock_llm_complete, mock_config):
         """Test _classify_with_llm returns None on API error"""
         mock_config.ai.classification_enabled = True
         mock_llm_complete.return_value = {
@@ -328,8 +333,7 @@ class TestCategoryClassifierAgent:
         assert result is None
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
-    def test_classify_with_llm_invalid_json(self, mock_config, mock_llm_complete):
+    def test_classify_with_llm_invalid_json(self, mock_llm_complete, mock_config):
         """Test _classify_with_llm returns None on invalid JSON from LLM"""
         mock_config.ai.classification_enabled = True
         mock_llm_complete.return_value = {
@@ -350,15 +354,17 @@ class TestCategoryClassifierAgent:
         assert result is None
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
     def test_classify_with_llm_sets_telemetry_on_success(
-        self, mock_config, mock_llm_complete
+        self, mock_llm_complete, mock_config
     ):
         """Test that last_telemetry is populated after successful LLM call"""
         mock_config.ai.classification_enabled = True
         mock_llm_complete.return_value = {
             "status": "ok",
-            "text": '{"category": "policy", "country": "France", "eu_relevance": 8}',
+            "text": (
+                '{"category": "policy", "country": "France",'
+                ' "eu_relevance": 8, "confidence": 0.9}'
+            ),
             "model": "llama-3.3-70b-versatile",
             "latency_ms": 250,
             "tokens_in": 500,
@@ -382,13 +388,12 @@ class TestCategoryClassifierAgent:
         assert classifier.last_telemetry["tokens_in"] == 500
         assert classifier.last_telemetry["tokens_out"] == 30
         assert classifier.last_telemetry["llm_latency_ms"] == 250
-        assert classifier.last_telemetry["prompt_version"] == "classification_v1"
+        assert classifier.last_telemetry["prompt_version"] == "classification_v2"
         assert classifier.last_telemetry["fallback_reason"] is None
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
     def test_classify_with_llm_sets_telemetry_on_api_error(
-        self, mock_config, mock_llm_complete
+        self, mock_llm_complete, mock_config
     ):
         """Test that last_telemetry captures fallback_reason on API error"""
         mock_config.ai.classification_enabled = True
@@ -417,9 +422,8 @@ class TestCategoryClassifierAgent:
         assert "Rate limited" in classifier.last_telemetry["fallback_reason"]
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
     def test_classify_with_llm_sets_telemetry_on_parse_error(
-        self, mock_config, mock_llm_complete
+        self, mock_llm_complete, mock_config
     ):
         """Test that last_telemetry captures parse_error status"""
         mock_config.ai.classification_enabled = True
@@ -446,7 +450,6 @@ class TestCategoryClassifierAgent:
         assert classifier.last_telemetry["llm_status"] == "parse_error"
         assert classifier.last_telemetry["fallback_reason"] is not None
 
-    @patch("airopa_automation.agents.config")
     def test_classify_resets_telemetry_for_keyword_only(self, mock_config):
         """Test that last_telemetry is None when LLM is not enabled"""
         mock_config.ai.classification_enabled = False
@@ -610,7 +613,7 @@ class TestSummarizerAgent:
 
         assert summarizer.last_telemetry is not None
         assert summarizer.last_telemetry["article_url"] == "http://test.com/telem"
-        assert summarizer.last_telemetry["prompt_version"] == "summary_v1"
+        assert summarizer.last_telemetry["prompt_version"] == "summary_v2"
         assert summarizer.last_telemetry["llm_status"] == "ok"
         assert summarizer.last_telemetry["fallback_reason"] is None
 

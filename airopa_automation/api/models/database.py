@@ -27,6 +27,7 @@ class Article(Base):
     country = Column(String, nullable=True)
     quality_score = Column(Float, nullable=False)
     eu_relevance = Column(Float, nullable=True)  # European relevance score 0-10
+    confidence = Column(Float, nullable=True)  # LLM classification confidence 0.0-1.0
     content_hash = Column(String, unique=True, nullable=False)
     content = Column(Text, nullable=True)  # Full article content
     summary = Column(Text, nullable=True)  # Article summary

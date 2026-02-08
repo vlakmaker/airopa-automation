@@ -54,6 +54,9 @@ async def list_articles(
         # Build query with filters
         query = db.query(DBArticle)
 
+        # Filter out "other" category (irrelevant articles)
+        query = query.filter(DBArticle.category != "other")
+
         # Filter out low-relevance articles (stored but not published)
         threshold = config.scraper.eu_relevance_threshold
         if threshold > 0:
@@ -61,6 +64,9 @@ async def list_articles(
                 (DBArticle.eu_relevance >= threshold)
                 | (DBArticle.eu_relevance.is_(None))
             )
+
+        # Minimum quality gate for display
+        query = query.filter(DBArticle.quality_score >= 0.4)
 
         if category:
             query = query.filter(DBArticle.category == category.value)

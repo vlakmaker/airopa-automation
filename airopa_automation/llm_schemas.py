@@ -12,7 +12,7 @@ import re
 
 logger = logging.getLogger(__name__)
 
-VALID_CATEGORIES = {"startups", "policy", "research", "industry"}
+VALID_CATEGORIES = {"startups", "policy", "research", "industry", "other"}
 
 
 class ClassificationResult:
@@ -23,12 +23,14 @@ class ClassificationResult:
         category: str,
         country: str,
         eu_relevance: float,
+        confidence: float = 0.0,
         valid: bool = True,
         fallback_reason: str = "",
     ):
         self.category = category
         self.country = country
         self.eu_relevance = eu_relevance
+        self.confidence = confidence
         self.valid = valid
         self.fallback_reason = fallback_reason
 
@@ -93,10 +95,19 @@ def parse_classification(raw_text: str) -> ClassificationResult:  # noqa: C901
         country = ""
     country = country.strip()
 
+    # Validate and clamp confidence
+    confidence = data.get("confidence", 0.0)
+    try:
+        confidence = float(confidence)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
     return ClassificationResult(
         category=category,
         country=country,
         eu_relevance=eu_relevance,
+        confidence=confidence,
     )
 
 
@@ -110,6 +121,51 @@ def _fallback(reason: str) -> ClassificationResult:
         valid=False,
         fallback_reason=reason,
     )
+
+
+def validate_classification(
+    result: ClassificationResult, article_title: str = ""
+) -> ClassificationResult:
+    """Apply post-validation business rules to a classification result.
+
+    Rules:
+    1. Category "other" forces eu_relevance to 0
+    2. Low confidence (< 0.5) with non-"other" category -> demote to "other"
+    3. Very low EU relevance (< 2.0) with non-"other" category -> demote to "other"
+    """
+    if not result.valid:
+        return result
+
+    # Rule 1: "other" category should never display
+    if result.category == "other":
+        result.eu_relevance = 0.0
+        return result
+
+    # Rule 2: Low confidence demotion
+    if result.confidence < 0.5:
+        logger.info(
+            "Post-validation: demoting '%s' from %s to other (confidence=%.2f)",
+            article_title[:60],
+            result.category,
+            result.confidence,
+        )
+        result.category = "other"
+        result.eu_relevance = 0.0
+        return result
+
+    # Rule 3: Very low EU relevance demotion
+    if result.eu_relevance < 2.0:
+        logger.info(
+            "Post-validation: demoting '%s' from %s to other (eu_relevance=%.1f)",
+            article_title[:60],
+            result.category,
+            result.eu_relevance,
+        )
+        result.category = "other"
+        result.eu_relevance = 0.0
+        return result
+
+    return result
 
 
 # --- Summary validation ---
@@ -141,6 +197,10 @@ def parse_summary(raw_text: str) -> SummaryResult:
         return SummaryResult(valid=False, fallback_reason="empty_summary")
 
     text = raw_text.strip()
+
+    # Check for NOT_RELEVANT signal
+    if text.upper().replace("_", "").replace(" ", "").startswith("NOTRELEVANT"):
+        return SummaryResult(text="NOT_RELEVANT", valid=True)
 
     # Strip wrapping quotes if present
     if (text.startswith('"') and text.endswith('"')) or (

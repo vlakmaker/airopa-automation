@@ -16,17 +16,42 @@ class ArticleCategory(str, Enum):
     policy = "policy"
     research = "research"
     industry = "industry"
+    other = "other"
     # Legacy categories (kept for backward compatibility with older articles)
     country = "country"
     stories = "stories"
 
 
 class ArticleCountry(str, Enum):
-    """Valid country classifications"""
+    """Common country classifications (used for documentation/filtering)"""
 
+    austria = "Austria"
+    belgium = "Belgium"
+    bulgaria = "Bulgaria"
+    croatia = "Croatia"
+    cyprus = "Cyprus"
+    czech_republic = "Czech Republic"
+    denmark = "Denmark"
+    estonia = "Estonia"
+    finland = "Finland"
     france = "France"
     germany = "Germany"
+    greece = "Greece"
+    hungary = "Hungary"
+    ireland = "Ireland"
+    italy = "Italy"
+    latvia = "Latvia"
+    lithuania = "Lithuania"
+    luxembourg = "Luxembourg"
+    malta = "Malta"
     netherlands = "Netherlands"
+    poland = "Poland"
+    portugal = "Portugal"
+    romania = "Romania"
+    slovakia = "Slovakia"
+    slovenia = "Slovenia"
+    spain = "Spain"
+    sweden = "Sweden"
     europe = "Europe"
 
 
@@ -38,9 +63,7 @@ class ArticleResponse(BaseModel):
     url: str = Field(..., description="Original article URL")
     source: str = Field(..., description="Source website")
     category: ArticleCategory = Field(..., description="Article category")
-    country: Optional[ArticleCountry] = Field(
-        None, description="Country classification"
-    )
+    country: Optional[str] = Field(None, description="Country classification")
     quality_score: float = Field(
         ..., ge=0.0, le=1.0, description="Quality score (0.0-1.0)"
     )

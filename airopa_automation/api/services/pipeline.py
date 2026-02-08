@@ -100,11 +100,29 @@ class PipelineService:
                 except Exception as e:
                     print(f"Error classifying article {article.title}: {e}")
                     continue
+            # Classification path diagnostics
+            llm_ok = sum(
+                1
+                for t in telemetry_rows
+                if t["llm_status"] == "ok"
+                and t["prompt_version"].startswith("classification")
+            )
+            llm_failed = sum(
+                1
+                for t in telemetry_rows
+                if t["llm_status"] != "ok"
+                and t["prompt_version"].startswith("classification")
+            )
+            keyword_only = (
+                len(classified_articles) - llm_ok - llm_failed - budget_skipped
+            )
             if budget_skipped:
                 print(f"Budget: {budget_skipped} articles used keyword fallback")
             print(
                 f"Classified {len(classified_articles)} articles "
-                f"(tokens used: {budget.tokens_used})"
+                f"(LLM: {llm_ok} ok, {llm_failed} failed, "
+                f"{budget_skipped} budget-skipped, {keyword_only} keyword-only, "
+                f"tokens used: {budget.tokens_used})"
             )
 
             # Step 2.5: Summarize articles (with budget tracking)
@@ -243,6 +261,7 @@ class PipelineService:
                 country=article.country if article.country else None,
                 quality_score=article.quality_score,
                 eu_relevance=article.eu_relevance if article.eu_relevance else None,
+                confidence=article.confidence if article.confidence else None,
                 content_hash=content_hash,
                 content=article.content if article.content else None,
                 summary=article.summary if article.summary else None,

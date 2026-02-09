@@ -90,7 +90,7 @@ class ScraperAgent:
             published_date = published_date.replace(tzinfo=timezone.utc)
         return (now - published_date) > max_age
 
-    def scrape_rss_feeds(self) -> List[Article]:
+    def scrape_rss_feeds(self) -> List[Article]:  # noqa: C901
         """Scrape articles from RSS feeds"""
         articles = []
 
@@ -121,12 +121,29 @@ class ScraperAgent:
                         if not image_url:
                             image_url = self._extract_rss_image(entry)
 
+                        # RSS content fallback: when newspaper3k fails or returns
+                        # very short content (paywall, 403, etc.), use RSS
+                        # content:encoded or description as fallback so articles
+                        # still get quality credit and LLM classification context.
+                        rss_summary = entry.get("summary", "")
+                        if len(content) < 200:
+                            rss_content = self._extract_rss_content(entry)
+                            if rss_content and len(rss_content) > len(content):
+                                logger.info(
+                                    "Using RSS content as fallback for '%s' "
+                                    "(newspaper3k: %d chars, RSS: %d chars)",
+                                    entry.get("title", "unknown")[:60],
+                                    len(content),
+                                    len(rss_content),
+                                )
+                                content = rss_content
+
                         article = Article(
                             title=entry.get("title", "No title"),
                             url=entry.get("link", ""),
                             source=source_name,
                             content=content,
-                            summary=entry.get("summary", ""),
+                            summary=rss_summary,
                             published_date=published_date,
                             scraped_date=datetime.now(),
                             image_url=image_url,
@@ -254,6 +271,30 @@ class ScraperAgent:
         if len(url) > 2048:
             return None
         return url
+
+    def _extract_rss_content(self, entry) -> Optional[str]:
+        """Extract best available text from RSS entry fields.
+
+        Checks content:encoded first (full article body in some feeds),
+        then falls back to summary/description. Returns cleaned text
+        or None if nothing useful is available.
+        """
+        # content:encoded (feedparser stores as entry.content list)
+        content_list = entry.get("content", [])
+        if content_list:
+            raw = content_list[0].get("value", "")
+            cleaned = clean_content(raw)
+            if cleaned:
+                return cleaned
+
+        # summary / description
+        summary = entry.get("summary", "")
+        if summary:
+            cleaned = clean_content(summary)
+            if cleaned:
+                return cleaned
+
+        return None
 
     def _extract_rss_image(self, entry) -> Optional[str]:
         """Extract image URL from RSS entry media:content or enclosures."""

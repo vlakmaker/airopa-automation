@@ -132,6 +132,7 @@ engine = create_engine(
         {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
     ),
     echo=False,  # Set to True for SQL debugging
+    pool_pre_ping=True,
 )
 
 # Create session factory

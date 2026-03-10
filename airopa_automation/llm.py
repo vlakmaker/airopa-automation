@@ -1,5 +1,5 @@
 """
-LLM wrapper — abstracts Groq and Mistral API calls.
+LLM wrapper — abstracts Groq, Mistral, and OpenRouter API calls.
 
 Returns structured results for telemetry. Never raises into
 business logic; callers check result["status"] instead.
@@ -61,6 +61,8 @@ def llm_complete(
 
     if provider == "mistral":
         return _call_mistral(prompt, used_model, used_temp, api_key, base)
+    if provider == "openrouter":
+        return _call_openrouter(prompt, used_model, used_temp, api_key, base)
     return _call_groq(prompt, used_model, used_temp, api_key, base)
 
 
@@ -139,4 +141,46 @@ def _call_mistral(
         base["status"] = "api_error"
         base["error"] = str(e)
         logger.error("Mistral API error: %s", e)
+        return base
+
+
+def _call_openrouter(
+    prompt: str, model: str, temperature: float, api_key: str, base: dict
+) -> dict:
+    """Call OpenRouter API (OpenAI-compatible)."""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        base["status"] = "import_error"
+        base["error"] = "openai package not installed"
+        logger.error(base["error"])
+        return base
+
+    start = time.monotonic()
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url=config.ai.openrouter_base_url,
+        )
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=config.ai.max_tokens,
+        )
+        elapsed = (time.monotonic() - start) * 1000
+
+        base["text"] = response.choices[0].message.content or ""
+        base["latency_ms"] = round(elapsed)
+        if response.usage:
+            base["tokens_in"] = response.usage.prompt_tokens
+            base["tokens_out"] = response.usage.completion_tokens
+        return base
+
+    except Exception as e:
+        elapsed = (time.monotonic() - start) * 1000
+        base["latency_ms"] = round(elapsed)
+        base["status"] = "api_error"
+        base["error"] = str(e)
+        logger.error("OpenRouter API error: %s", e)
         return base

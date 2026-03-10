@@ -1,0 +1,86 @@
+services:
+  airopa-api:
+    build: .
+    container_name: airopa-api
+    restart: unless-stopped
+    depends_on:
+      airopa-db:
+        condition: service_healthy
+    env_file: .env.production
+    environment:
+      - DATABASE_URL=postgresql://airopa:${POSTGRES_PASSWORD}@airopa-db:5432/airopa
+      - PORT=8000
+    networks:
+      - airopa
+      - traefik
+    labels:
+      # Traefik labels — update the Host rule to your domain
+      - "traefik.enable=true"
+      - "traefik.http.routers.airopa.rule=Host(`api.airopa.news`)"
+      - "traefik.http.routers.airopa.entrypoints=websecure"
+      - "traefik.http.routers.airopa.tls.certresolver=letsencrypt"
+      - "traefik.http.services.airopa.loadbalancer.server.port=8000"
+
+  airopa-db:
+    image: postgres:16-alpine
+    container_name: airopa-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=airopa
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=airopa
+    volumes:
+      - airopa-pgdata:/var/lib/postgresql/data
+    networks:
+      - airopa
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airopa -d airopa"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Scheduled scraping — runs every 6 hours via cron inside the container
+  airopa-cron:
+    build: .
+    container_name: airopa-cron
+    restart: unless-stopped
+    depends_on:
+      airopa-api:
+        condition: service_healthy
+    env_file: .env.production
+    environment:
+      - AIROPA_API_URL=http://airopa-api:8000
+    networks:
+      - airopa
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "AIropa cron: scraping every 6 hours"
+        while true; do
+          echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Running scrape..."
+          python -c "
+        import urllib.request, json, os
+        url = os.environ['AIROPA_API_URL'] + '/api/scrape/sync'
+        api_key = os.environ.get('API_KEY', '')
+        req = urllib.request.Request(url, method='POST',
+            headers={'Content-Type': 'application/json', 'X-API-Key': api_key})
+        try:
+            resp = urllib.request.urlopen(req, timeout=600)
+            data = json.loads(resp.read())
+            print(f'  Status: {data.get(\"status\")}, Articles: {data.get(\"result_count\", \"N/A\")}')
+        except Exception as e:
+            print(f'  Error: {e}')
+        "
+          echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Next run in 6 hours"
+          sleep 21600
+        done
+
+volumes:
+  airopa-pgdata:
+
+networks:
+  airopa:
+    name: airopa
+  traefik:
+    external: true
+    name: traefik

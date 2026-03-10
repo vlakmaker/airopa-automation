@@ -502,10 +502,94 @@ Respond in JSON only:
 
         return parsed
 
+    # Sources known to focus on European tech/policy
+    _EU_SOURCES = {
+        "Sifted",
+        "Tech.eu",
+        "EURACTIV",
+        "EuroNews",
+        "AlgorithmWatch",
+        "The Parliament Magazine",
+        "Science Business",
+        "Innovation Origins",
+        "Politico Europe",
+        "TNW",
+    }
+
+    # Keywords that signal European relevance in title or content
+    _EU_KEYWORDS = [
+        "europe",
+        "european",
+        " eu ",
+        "eu's",
+        "brussels",
+        "gdpr",
+        "ai act",
+        "digital markets act",
+        "digital services act",
+        "france",
+        "french",
+        "germany",
+        "german",
+        "netherlands",
+        "dutch",
+        "spain",
+        "spanish",
+        "italy",
+        "italian",
+        "sweden",
+        "swedish",
+        "denmark",
+        "danish",
+        "finland",
+        "finnish",
+        "ireland",
+        "irish",
+        "poland",
+        "polish",
+        "austria",
+        "austrian",
+        "belgium",
+        "belgian",
+        "portugal",
+        "portuguese",
+        "czech",
+        "romania",
+        "romanian",
+        "hungary",
+        "hungarian",
+        "greece",
+        "greek",
+        "estonia",
+        "estonian",
+        "latvia",
+        "latvian",
+        "lithuania",
+        "lithuanian",
+        "croatia",
+        "croatian",
+        "slovenia",
+        "slovenian",
+        "slovakia",
+        "slovak",
+        "bulgaria",
+        "bulgarian",
+        "cyprus",
+        "malta",
+        "luxembourg",
+    ]
+
     def _classify_with_keywords(self, article: Article) -> Article:
-        """Keyword-based classification fallback."""
+        """Keyword-based classification fallback.
+
+        Sets category, country, eu_relevance, and confidence based on
+        keyword signals. EU relevance is estimated from source credibility
+        and keyword density so that articles are not silently filtered
+        downstream by the eu_relevance threshold.
+        """
         title_lower = article.title.lower()
         content_lower = article.content.lower()
+        combined = f" {title_lower} {content_lower} "
 
         # Category classification
         if any(
@@ -526,17 +610,51 @@ Respond in JSON only:
         else:
             article.category = "industry"
 
-        # Country classification
+        # Country classification (check both title and content)
         if "france" in title_lower or "france" in content_lower:
             article.country = "France"
         elif "germany" in title_lower or "germany" in content_lower:
             article.country = "Germany"
         elif "netherlands" in title_lower or "netherlands" in content_lower:
             article.country = "Netherlands"
-        elif "europe" in title_lower or "eu" in title_lower:
+        elif (
+            "europe" in title_lower
+            or "europe" in content_lower
+            or " eu " in f" {title_lower} "
+            or " eu " in f" {content_lower} "
+        ):
             article.country = "Europe"
         else:
             article.country = ""
+
+        # --- EU relevance estimation (keyword heuristic) ---
+        eu_score = 0.0
+
+        # Signal 1: Source is a known European outlet (+4.0)
+        if article.source in self._EU_SOURCES:
+            eu_score += 4.0
+
+        # Signal 2: EU keywords in title (+2.0 each, max +4.0)
+        title_hits = sum(1 for kw in self._EU_KEYWORDS if kw in f" {title_lower} ")
+        eu_score += min(title_hits * 2.0, 4.0)
+
+        # Signal 3: EU keywords in content (+0.5 each, max +3.0)
+        content_hits = sum(1 for kw in self._EU_KEYWORDS if kw in combined)
+        # Subtract title hits to avoid double-counting
+        content_only_hits = max(content_hits - title_hits, 0)
+        eu_score += min(content_only_hits * 0.5, 3.0)
+
+        # Signal 4: Country was identified (+1.0)
+        if article.country:
+            eu_score += 1.0
+
+        article.eu_relevance = min(eu_score, 10.0)
+
+        # Confidence: keyword classification is inherently less certain
+        # than LLM. Use 0.6 as a baseline — high enough to pass the
+        # confidence > 0.5 gate in validate_classification, low enough
+        # to signal this is a heuristic result.
+        article.confidence = 0.6
 
         return article
 
@@ -788,7 +906,7 @@ class ContentGeneratorAgent:
         """Generate YAML frontmatter for markdown file"""
         frontmatter = "---\n"
         frontmatter += f'title: "{article.title}"\n'
-        frontmatter += f"date: \"{article.published_date.strftime('%Y-%m-%d') if article.published_date else datetime.now().strftime('%Y-%m-%d')}\"\n"  # noqa: E501
+        frontmatter += f'date: "{article.published_date.strftime("%Y-%m-%d") if article.published_date else datetime.now().strftime("%Y-%m-%d")}"\n'  # noqa: E501
         frontmatter += f'author: "{config.content.default_author}"\n'
         frontmatter += f'source: "{article.source}"\n'
         frontmatter += f'url: "{article.url}"\n'

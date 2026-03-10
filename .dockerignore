@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Environment / secrets
+.env
+.env.*
+
+# Database files (local dev only)
+database/
+*.db
+*.db-journal
+
+# Dev/test files
+tests/
+scripts/
+data/
+*.md
+*.csv
+
+# Railway-specific (not needed in Docker)
+railway.json
+Procfile
+runtime.txt
+start.sh
+
+# IDE
+.vscode/
+.idea/
+
+# CI
+.github/

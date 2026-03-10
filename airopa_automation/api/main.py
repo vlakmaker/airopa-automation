@@ -41,7 +41,8 @@ DEFAULT_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:3000",
-    "https://web-production-bcd96.up.railway.app",
+    "https://airopa.news",
+    "https://www.airopa.news",
 ]
 # Combine default origins with any custom origins from environment
 cors_origins = [

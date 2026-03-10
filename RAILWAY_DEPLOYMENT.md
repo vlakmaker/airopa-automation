@@ -21,23 +21,23 @@ For production, you can add:
 
 ### Step 4: Deploy
 - Railway will automatically build and deploy
-- You'll get a public URL like: `https://airopa-automation-production.up.railway.app`
+- You'll get a public URL like: `https://api.airopa.news`
 
 ### Step 5: Verify Deployment
 Once deployed, test these endpoints:
 
 ```bash
 # Health check
-curl https://your-app.up.railway.app/api/health
+curl https://api.airopa.news/api/health
 
 # List articles (will be empty initially)
-curl https://your-app.up.railway.app/api/articles
+curl https://api.airopa.news/api/articles
 
 # Trigger scraping
-curl -X POST https://your-app.up.railway.app/api/scrape
+curl -X POST https://api.airopa.news/api/scrape
 
 # API docs
-open https://your-app.up.railway.app/docs
+open https://api.airopa.news/docs
 ```
 
 ## Automatic Features

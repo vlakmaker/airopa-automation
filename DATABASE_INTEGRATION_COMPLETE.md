@@ -383,12 +383,12 @@ You can manually trigger a scrape from GitHub:
 
 ### Configuration Options
 
-Set `RAILWAY_API_URL` secret in repository settings to override the default API URL:
+Set `API_URL` secret in repository settings to override the default API URL:
 
 ```
 Settings → Secrets and variables → Actions → New repository secret
-Name: RAILWAY_API_URL
-Value: https://your-app.up.railway.app
+Name: API_URL
+Value: https://api.airopa.news
 ```
 
 ### Monitoring
@@ -437,7 +437,7 @@ if DATABASE_URL.startswith("postgres://"):
 ### Verify Connection
 
 ```bash
-curl https://your-app.up.railway.app/api/health
+curl https://api.airopa.news/api/health
 # Should return: {"database": "connected", ...}
 ```
 

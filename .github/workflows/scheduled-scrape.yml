@@ -13,8 +13,8 @@ on:
         default: 'Manual content refresh'
 
 env:
-  # Default Railway URL - can be overridden with repository secret
-  API_URL: ${{ secrets.RAILWAY_API_URL || 'https://web-production-bcd96.up.railway.app' }}
+  # API URL - set via repository secret
+  API_URL: ${{ secrets.API_URL || 'https://api.airopa.news' }}
   # API key for authenticated endpoints (required for /api/scrape)
   API_KEY: ${{ secrets.API_KEY }}
 

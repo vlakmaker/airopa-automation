@@ -251,13 +251,13 @@ Job status set to "completed" with `result_count`. On error: status="failed" wit
 - **Severity:** S3
 - **Fix sketch:** Cache count, or use approximate counts, or paginate with cursor-based pagination
 
-### Issue 8: CORS includes Railway production URL as default origin
+### Issue 8: CORS origins configuration
 
-- **Symptom:** `DEFAULT_ORIGINS` hardcodes `https://web-production-bcd96.up.railway.app` — the API's own URL, not the frontend
+- **Symptom:** `DEFAULT_ORIGINS` must include the production frontend domain
 - **Location:** `api/main.py` CORS configuration
-- **Impact:** INFERRED — May be intentional for same-origin API calls, but the Vercel frontend URL is not in the default list (would need `ALLOWED_ORIGINS` env var)
+- **Impact:** Frontend requests blocked if origin not listed
 - **Severity:** S3
-- **Fix sketch:** Verify the Vercel frontend domain is configured in `ALLOWED_ORIGINS` env var on Railway
+- **Fix sketch:** Ensure `https://airopa.news` and `https://www.airopa.news` are in `DEFAULT_ORIGINS` or set via `ALLOWED_ORIGINS` env var
 
 ### Issue 9: No retry logic for LLM API calls
 

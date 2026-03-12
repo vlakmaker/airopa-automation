@@ -69,7 +69,7 @@ class ScraperConfig(BaseModel):
 
 
 class AIConfig(BaseModel):
-    # LLM provider: "groq" or "mistral"
+    # LLM provider: "groq", "mistral", or "openrouter"
     provider: str = os.getenv("LLM_PROVIDER", "groq")
     temperature: float = 0.3
     max_tokens: int = 1024
@@ -79,6 +79,12 @@ class AIConfig(BaseModel):
     # Mistral
     mistral_api_key: str = os.getenv("MISTRAL_API_KEY", "")
     mistral_model: str = "mistral-small-latest"
+    # OpenRouter (OpenAI-compatible)
+    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
+    openrouter_model: str = os.getenv(
+        "OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct"
+    )
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Feature flags — control LLM rollout via env vars
     classification_enabled: bool = (
         os.getenv("LLM_CLASSIFICATION_ENABLED", "false").lower() == "true"
@@ -94,6 +100,8 @@ class AIConfig(BaseModel):
         """Return API key for the active provider."""
         if self.provider == "mistral":
             return self.mistral_api_key
+        if self.provider == "openrouter":
+            return self.openrouter_api_key
         return self.groq_api_key
 
     @property
@@ -101,6 +109,8 @@ class AIConfig(BaseModel):
         """Return model name for the active provider."""
         if self.provider == "mistral":
             return self.mistral_model
+        if self.provider == "openrouter":
+            return self.openrouter_model
         return self.groq_model
 
 

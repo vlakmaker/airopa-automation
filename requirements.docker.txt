@@ -1,0 +1,28 @@
+# AIropa Automation - Production Dependencies (Docker)
+
+# Core scraping
+feedparser==6.0.10
+newspaper3k==0.2.8
+lxml_html_clean==0.1.1
+beautifulsoup4==4.12.2
+
+# AI/ML for content classification
+groq>=0.9.0
+mistralai>=1.0.0
+openai>=1.0.0
+python-dotenv==1.0.0
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+
+# API framework
+fastapi==0.109.0
+uvicorn[standard]==0.25.0
+pydantic>=2.8.2,<3
+slowapi==0.1.9
+
+# Utilities
+python-slugify==8.0.1
+requests==2.31.0
+httpx>=0.27.0,<1

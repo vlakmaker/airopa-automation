@@ -27,12 +27,6 @@ data/
 *.md
 *.csv
 
-# Railway-specific (not needed in Docker)
-railway.json
-Procfile
-runtime.txt
-start.sh
-
 # IDE
 .vscode/
 .idea/

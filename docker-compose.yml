@@ -14,8 +14,9 @@ services:
       - airopa
       - traefik
     labels:
-      # Traefik labels — update the Host rule to your domain
+      # Traefik labels
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
       - "traefik.http.routers.airopa.rule=Host(`api.airopa.news`)"
       - "traefik.http.routers.airopa.entrypoints=websecure"
       - "traefik.http.routers.airopa.tls.certresolver=letsencrypt"
@@ -52,6 +53,9 @@ services:
       - AIROPA_API_URL=http://airopa-api:8000
     networks:
       - airopa
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 60s
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

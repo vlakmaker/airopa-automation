@@ -42,6 +42,10 @@ class ScraperConfig(BaseModel):
     eu_relevance_threshold: float = float(os.getenv("EU_RELEVANCE_THRESHOLD", "3.0"))
     max_article_age_days: int = int(os.getenv("MAX_ARTICLE_AGE_DAYS", "30"))
     rate_limit_delay: float = 1.0  # seconds between requests
+    # Timeout in seconds for fetching a single RSS feed
+    feed_timeout: int = int(os.getenv("FEED_TIMEOUT", "30"))
+    # Timeout in seconds for downloading/extracting a single article
+    article_timeout: int = int(os.getenv("ARTICLE_TIMEOUT", "15"))
     user_agent: str = "AIropaBot/1.0 (+https://airopa.eu)"
     # Source name normalization mapping (RSS feed title → canonical name)
     source_name_map: dict[str, str] = {

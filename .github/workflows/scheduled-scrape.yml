@@ -61,9 +61,10 @@ jobs:
             exit 1
           fi
 
-          # Call sync endpoint — waits for pipeline to complete (up to 10 min)
+          # Call sync endpoint — waits for pipeline to complete (up to 15 min)
           HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
-            --max-time 600 \
+            --max-time 900 \
+            --connect-timeout 30 \
             -X POST "${{ env.API_URL }}/api/scrape/sync" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: ${{ env.API_KEY }}")

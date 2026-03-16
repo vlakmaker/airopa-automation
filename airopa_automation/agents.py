@@ -90,13 +90,24 @@ class ScraperAgent:
             published_date = published_date.replace(tzinfo=timezone.utc)
         return (now - published_date) > max_age
 
+    def _fetch_feed(self, feed_url: str):
+        """Fetch and parse an RSS feed with a timeout.
+
+        Uses requests to download the feed (respecting feed_timeout),
+        then passes the content to feedparser. This prevents a single
+        slow or hanging feed from blocking the entire pipeline.
+        """
+        resp = self.session.get(feed_url, timeout=config.scraper.feed_timeout)
+        resp.raise_for_status()
+        return feedparser.parse(resp.content)
+
     def scrape_rss_feeds(self) -> List[Article]:  # noqa: C901
         """Scrape articles from RSS feeds"""
         articles = []
 
         for feed_url in config.scraper.rss_feeds:
             try:
-                feed = feedparser.parse(feed_url)
+                feed = self._fetch_feed(feed_url)
                 raw_source = feed.feed.get("title", feed_url)
                 source_name = self._normalize_source_name(raw_source)
 
@@ -159,8 +170,18 @@ class ScraperAgent:
                         )
                         continue
 
+            except requests.exceptions.Timeout:
+                logger.warning(
+                    "Feed timed out after %ds: %s",
+                    config.scraper.feed_timeout,
+                    feed_url,
+                )
+                continue
+            except requests.exceptions.ConnectionError as e:
+                logger.warning("Feed connection error: %s — %s", feed_url, e)
+                continue
             except Exception as e:
-                print(f"Error scraping RSS feed {feed_url}: {e}")
+                logger.warning("Error scraping RSS feed %s: %s", feed_url, e)
                 continue
 
         return articles
@@ -245,17 +266,30 @@ class ScraperAgent:
     def _extract_article_data(self, url: str) -> tuple[str, Optional[str]]:
         """Extract content and image URL from an article URL.
 
+        Downloads the page with a configurable timeout (article_timeout),
+        then uses newspaper3k to parse the HTML. This prevents a single
+        slow page from stalling the pipeline.
+
         Returns:
             Tuple of (article_text, image_url). image_url may be None.
         """
         try:
+            resp = self.session.get(url, timeout=config.scraper.article_timeout)
+            resp.raise_for_status()
             newspaper_article = NewspaperArticle(url)
-            newspaper_article.download()
+            newspaper_article.download(input_html=resp.text)
             newspaper_article.parse()
             image_url = self._validate_image_url(newspaper_article.top_image)
             return str(newspaper_article.text), image_url
+        except requests.exceptions.Timeout:
+            logger.warning(
+                "Article download timed out after %ds: %s",
+                config.scraper.article_timeout,
+                url,
+            )
+            return "", None
         except Exception as e:
-            print(f"Error extracting content from {url}: {e}")
+            logger.warning("Error extracting content from %s: %s", url, e)
             return "", None
 
     def _validate_image_url(self, url: Optional[str]) -> Optional[str]:

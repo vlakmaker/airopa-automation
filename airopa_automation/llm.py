@@ -34,7 +34,7 @@ def llm_complete(
             tokens_out: Output token count (0 if unavailable)
             status: "ok", "no_api_key", "api_error", "timeout", or "import_error"
             error: Error message (empty string on success)
-            provider: "groq" or "mistral"
+            provider: "groq", "mistral", "openrouter", or "kilo"
             model: Model name used
     """
     provider = config.ai.provider
@@ -63,6 +63,8 @@ def llm_complete(
         return _call_mistral(prompt, used_model, used_temp, api_key, base)
     if provider == "openrouter":
         return _call_openrouter(prompt, used_model, used_temp, api_key, base)
+    if provider == "kilo":
+        return _call_kilo(prompt, used_model, used_temp, api_key, base)
     return _call_groq(prompt, used_model, used_temp, api_key, base)
 
 
@@ -183,4 +185,46 @@ def _call_openrouter(
         base["status"] = "api_error"
         base["error"] = str(e)
         logger.error("OpenRouter API error: %s", e)
+        return base
+
+
+def _call_kilo(
+    prompt: str, model: str, temperature: float, api_key: str, base: dict
+) -> dict:
+    """Call Kilo AI Gateway (OpenAI-compatible)."""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        base["status"] = "import_error"
+        base["error"] = "openai package not installed"
+        logger.error(base["error"])
+        return base
+
+    start = time.monotonic()
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url=config.ai.kilo_base_url,
+        )
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=config.ai.max_tokens,
+        )
+        elapsed = (time.monotonic() - start) * 1000
+
+        base["text"] = response.choices[0].message.content or ""
+        base["latency_ms"] = round(elapsed)
+        if response.usage:
+            base["tokens_in"] = response.usage.prompt_tokens
+            base["tokens_out"] = response.usage.completion_tokens
+        return base
+
+    except Exception as e:
+        elapsed = (time.monotonic() - start) * 1000
+        base["latency_ms"] = round(elapsed)
+        base["status"] = "api_error"
+        base["error"] = str(e)
+        logger.error("Kilo Gateway API error: %s", e)
         return base

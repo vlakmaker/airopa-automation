@@ -69,7 +69,7 @@ class ScraperConfig(BaseModel):
 
 
 class AIConfig(BaseModel):
-    # LLM provider: "groq", "mistral", or "openrouter"
+    # LLM provider: "groq", "mistral", "openrouter", or "kilo"
     provider: str = os.getenv("LLM_PROVIDER", "groq")
     temperature: float = 0.3
     max_tokens: int = 1024
@@ -85,6 +85,10 @@ class AIConfig(BaseModel):
         "OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct"
     )
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Kilo Gateway (OpenAI-compatible)
+    kilo_api_key: str = os.getenv("KILO_API_KEY", "")
+    kilo_model: str = os.getenv("KILO_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
+    kilo_base_url: str = "https://api.kilo.ai/api/gateway"
     # Feature flags — control LLM rollout via env vars
     classification_enabled: bool = (
         os.getenv("LLM_CLASSIFICATION_ENABLED", "false").lower() == "true"
@@ -102,6 +106,8 @@ class AIConfig(BaseModel):
             return self.mistral_api_key
         if self.provider == "openrouter":
             return self.openrouter_api_key
+        if self.provider == "kilo":
+            return self.kilo_api_key
         return self.groq_api_key
 
     @property
@@ -111,6 +117,8 @@ class AIConfig(BaseModel):
             return self.mistral_model
         if self.provider == "openrouter":
             return self.openrouter_model
+        if self.provider == "kilo":
+            return self.kilo_model
         return self.groq_model
 
 

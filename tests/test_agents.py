@@ -767,10 +767,10 @@ class TestScraperAgent:
         assert scraper.session is not None
         assert "User-Agent" in scraper.session.headers
 
-    @patch("airopa_automation.agents.feedparser.parse")
-    def test_scrape_rss_feeds_empty(self, mock_parse):
+    @patch("airopa_automation.agents.ScraperAgent._fetch_feed")
+    def test_scrape_rss_feeds_empty(self, mock_fetch):
         """Test RSS scraping with empty config"""
-        mock_parse.return_value = MagicMock(entries=[])
+        mock_fetch.return_value = MagicMock(entries=[])
 
         with patch("airopa_automation.agents.config") as mock_config:
             mock_config.scraper.rss_feeds = []
@@ -868,6 +868,11 @@ class TestScraperAgent:
         mock_newspaper.return_value = mock_article
 
         scraper = ScraperAgent()
+        # Mock session.get to avoid real HTTP requests
+        mock_response = MagicMock()
+        mock_response.text = "<html><body>Article content here</body></html>"
+        scraper.session.get = MagicMock(return_value=mock_response)
+
         content, image_url = scraper._extract_article_data(
             "https://example.com/article"
         )
@@ -884,6 +889,11 @@ class TestScraperAgent:
         mock_newspaper.return_value = mock_article
 
         scraper = ScraperAgent()
+        # Mock session.get to avoid real HTTP requests
+        mock_response = MagicMock()
+        mock_response.text = "<html><body>Article content here</body></html>"
+        scraper.session.get = MagicMock(return_value=mock_response)
+
         content, image_url = scraper._extract_article_data(
             "https://example.com/article"
         )
@@ -932,9 +942,9 @@ class TestScraperAgent:
         boundary = datetime.now(timezone.utc) - timedelta(days=29)
         assert scraper._is_article_too_old(boundary) is False
 
-    @patch("airopa_automation.agents.feedparser.parse")
+    @patch("airopa_automation.agents.ScraperAgent._fetch_feed")
     @patch("airopa_automation.agents.ScraperAgent._extract_article_data")
-    def test_scrape_rss_feeds_normalizes_source(self, mock_extract, mock_parse):
+    def test_scrape_rss_feeds_normalizes_source(self, mock_extract, mock_fetch):
         """Test that RSS scraping normalizes source names"""
         mock_extract.return_value = ("content", None)
         mock_feed = MagicMock()
@@ -947,7 +957,7 @@ class TestScraperAgent:
             "published": "",
         }.get(key, default)
         mock_feed.entries = [mock_entry]
-        mock_parse.return_value = mock_feed
+        mock_fetch.return_value = mock_feed
 
         with patch("airopa_automation.agents.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://sifted.eu/feed"]
@@ -965,9 +975,9 @@ class TestScraperAgent:
             assert len(articles) == 1
             assert articles[0].source == "Sifted"
 
-    @patch("airopa_automation.agents.feedparser.parse")
+    @patch("airopa_automation.agents.ScraperAgent._fetch_feed")
     @patch("airopa_automation.agents.ScraperAgent._extract_article_data")
-    def test_scrape_rss_feeds_skips_stale_articles(self, mock_extract, mock_parse):
+    def test_scrape_rss_feeds_skips_stale_articles(self, mock_extract, mock_fetch):
         """Test that RSS scraping skips articles older than max age"""
         mock_extract.return_value = ("content", None)
         mock_feed = MagicMock()
@@ -985,7 +995,7 @@ class TestScraperAgent:
             "published": old_date,
         }.get(key, default)
         mock_feed.entries = [mock_entry]
-        mock_parse.return_value = mock_feed
+        mock_fetch.return_value = mock_feed
 
         with patch("airopa_automation.agents.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
@@ -1000,10 +1010,10 @@ class TestScraperAgent:
 
             assert len(articles) == 0
 
-    @patch("airopa_automation.agents.feedparser.parse")
+    @patch("airopa_automation.agents.ScraperAgent._fetch_feed")
     @patch("airopa_automation.agents.ScraperAgent._extract_article_data")
     def test_scrape_rss_feeds_uses_rss_fallback_on_empty_content(
-        self, mock_extract, mock_parse
+        self, mock_extract, mock_fetch
     ):
         """Test that RSS description is used as content when newspaper3k fails"""
         mock_extract.return_value = ("", None)
@@ -1018,7 +1028,7 @@ class TestScraperAgent:
             "published": "",
         }.get(key, default)
         mock_feed.entries = [mock_entry]
-        mock_parse.return_value = mock_feed
+        mock_fetch.return_value = mock_feed
 
         with patch("airopa_automation.agents.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
@@ -1036,10 +1046,10 @@ class TestScraperAgent:
             assert "<p>" not in articles[0].content
             assert "European AI startup" in articles[0].content
 
-    @patch("airopa_automation.agents.feedparser.parse")
+    @patch("airopa_automation.agents.ScraperAgent._fetch_feed")
     @patch("airopa_automation.agents.ScraperAgent._extract_article_data")
     def test_scrape_rss_feeds_keeps_content_when_sufficient(
-        self, mock_extract, mock_parse
+        self, mock_extract, mock_fetch
     ):
         """Test that newspaper3k content is kept when it's long enough"""
         long_content = "Full article content. " * 20  # > 200 chars
@@ -1054,7 +1064,7 @@ class TestScraperAgent:
             "published": "",
         }.get(key, default)
         mock_feed.entries = [mock_entry]
-        mock_parse.return_value = mock_feed
+        mock_fetch.return_value = mock_feed
 
         with patch("airopa_automation.agents.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
@@ -1070,10 +1080,10 @@ class TestScraperAgent:
             assert len(articles) == 1
             assert articles[0].content == long_content
 
-    @patch("airopa_automation.agents.feedparser.parse")
+    @patch("airopa_automation.agents.ScraperAgent._fetch_feed")
     @patch("airopa_automation.agents.ScraperAgent._extract_article_data")
     def test_scrape_rss_feeds_fallback_prefers_longer_content(
-        self, mock_extract, mock_parse
+        self, mock_extract, mock_fetch
     ):
         """Test that fallback only replaces content if RSS description is longer"""
         mock_extract.return_value = ("Short paywall snippet here.", None)
@@ -1087,7 +1097,7 @@ class TestScraperAgent:
             "published": "",
         }.get(key, default)
         mock_feed.entries = [mock_entry]
-        mock_parse.return_value = mock_feed
+        mock_fetch.return_value = mock_feed
 
         with patch("airopa_automation.agents.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
@@ -1103,10 +1113,10 @@ class TestScraperAgent:
             assert len(articles) == 1
             assert articles[0].content == "Short paywall snippet here."
 
-    @patch("airopa_automation.agents.feedparser.parse")
+    @patch("airopa_automation.agents.ScraperAgent._fetch_feed")
     @patch("airopa_automation.agents.ScraperAgent._extract_article_data")
     def test_scrape_rss_feeds_uses_content_encoded_fallback(
-        self, mock_extract, mock_parse
+        self, mock_extract, mock_fetch
     ):
         """Test that content:encoded is preferred over summary for fallback"""
         mock_extract.return_value = ("", None)
@@ -1124,7 +1134,7 @@ class TestScraperAgent:
             "published": "",
         }.get(key, default)
         mock_feed.entries = [mock_entry]
-        mock_parse.return_value = mock_feed
+        mock_fetch.return_value = mock_feed
 
         with patch("airopa_automation.agents.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
@@ -1143,10 +1153,10 @@ class TestScraperAgent:
             # Should use content:encoded, not the short summary
             assert len(articles[0].content) > len("Short summary only.")
 
-    @patch("airopa_automation.agents.feedparser.parse")
+    @patch("airopa_automation.agents.ScraperAgent._fetch_feed")
     @patch("airopa_automation.agents.ScraperAgent._extract_article_data")
     def test_scrape_rss_feeds_preserves_summary_on_fallback(
-        self, mock_extract, mock_parse
+        self, mock_extract, mock_fetch
     ):
         """Test article.summary keeps original RSS description
         when fallback is used."""
@@ -1162,7 +1172,7 @@ class TestScraperAgent:
             "published": "",
         }.get(key, default)
         mock_feed.entries = [mock_entry]
-        mock_parse.return_value = mock_feed
+        mock_fetch.return_value = mock_feed
 
         with patch("airopa_automation.agents.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]

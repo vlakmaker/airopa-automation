@@ -36,7 +36,10 @@ jobs:
         id: health
         run: |
           echo "Checking API health..."
-          HEALTH_RESPONSE=$(curl -s -w "\n%{http_code}" "${{ env.API_URL }}/api/health")
+          HEALTH_RESPONSE=$(curl -s -w "\n%{http_code}" \
+            --max-time 30 \
+            --connect-timeout 10 \
+            "${{ env.API_URL }}/api/health")
           HTTP_CODE=$(echo "$HEALTH_RESPONSE" | tail -n1)
           BODY=$(echo "$HEALTH_RESPONSE" | sed '$d')
 
@@ -50,25 +53,107 @@ jobs:
 
           echo "API is healthy"
 
-      - name: Run scrape (synchronous)
+      - name: Run scrape
         id: scrape
         run: |
-          echo "Running synchronous scrape..."
-
           # Check if API key is configured
           if [ -z "${{ env.API_KEY }}" ]; then
             echo "::error::API_KEY secret is not configured. Please add it to repository secrets."
             exit 1
           fi
 
-          # Call sync endpoint — waits for pipeline to complete (up to 15 min)
+          # ---------------------------------------------------------
+          # Strategy: try the sync endpoint first (fast path).
+          # If it times out (curl exit 28) — which can happen when the
+          # pipeline takes a long time or a proxy drops the idle
+          # connection — fall back to async + polling.
+          # ---------------------------------------------------------
+
+          echo "Attempting synchronous scrape..."
+          SYNC_EXIT=0
           HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
             --max-time 900 \
             --connect-timeout 30 \
             -X POST "${{ env.API_URL }}/api/scrape/sync" \
             -H "Content-Type: application/json" \
-            -H "X-API-Key: ${{ env.API_KEY }}")
+            -H "X-API-Key: ${{ env.API_KEY }}") || SYNC_EXIT=$?
 
+          if [ "$SYNC_EXIT" -eq 28 ]; then
+            echo "::warning::Sync request timed out (curl exit 28). Falling back to async + polling..."
+
+            # Kick off async scrape
+            ASYNC_RESPONSE=$(curl -s -w "\n%{http_code}" \
+              --max-time 60 \
+              --connect-timeout 30 \
+              -X POST "${{ env.API_URL }}/api/scrape" \
+              -H "Content-Type: application/json" \
+              -H "X-API-Key: ${{ env.API_KEY }}")
+            ASYNC_CODE=$(echo "$ASYNC_RESPONSE" | tail -n1)
+            ASYNC_BODY=$(echo "$ASYNC_RESPONSE" | sed '$d')
+
+            echo "Async HTTP status: $ASYNC_CODE"
+            echo "Async response: $ASYNC_BODY"
+
+            if [ "$ASYNC_CODE" != "200" ]; then
+              echo "::error::Async scrape request failed with HTTP $ASYNC_CODE"
+              exit 1
+            fi
+
+            JOB_ID=$(echo "$ASYNC_BODY" | grep -o '"job_id":"[^"]*"' | sed 's/"job_id":"//;s/"//')
+
+            if [ -z "$JOB_ID" ]; then
+              echo "::error::Could not extract job_id from async response"
+              exit 1
+            fi
+
+            echo "Async job started: $JOB_ID"
+            echo "Polling for completion (max 20 min)..."
+
+            # Poll every 30 seconds for up to 20 minutes (40 attempts)
+            ATTEMPTS=0
+            MAX_ATTEMPTS=40
+            while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+              sleep 30
+              ATTEMPTS=$((ATTEMPTS + 1))
+
+              POLL_RESPONSE=$(curl -s -w "\n%{http_code}" \
+                --max-time 30 \
+                --connect-timeout 10 \
+                "${{ env.API_URL }}/api/jobs/$JOB_ID")
+              POLL_CODE=$(echo "$POLL_RESPONSE" | tail -n1)
+              POLL_BODY=$(echo "$POLL_RESPONSE" | sed '$d')
+
+              STATUS=$(echo "$POLL_BODY" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')
+              echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — status: $STATUS"
+
+              if [ "$STATUS" = "completed" ]; then
+                RESULT_COUNT=$(echo "$POLL_BODY" | grep -o '"result_count":[0-9]*' | sed 's/"result_count"://')
+                echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+                echo "status=completed" >> $GITHUB_OUTPUT
+                echo "result_count=$RESULT_COUNT" >> $GITHUB_OUTPUT
+                echo "Scrape completed successfully!"
+                echo "Articles stored: $RESULT_COUNT"
+                exit 0
+              elif [ "$STATUS" = "failed" ]; then
+                ERROR_MSG=$(echo "$POLL_BODY" | grep -o '"error_message":"[^"]*"' | sed 's/"error_message":"//;s/"//')
+                echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+                echo "status=failed" >> $GITHUB_OUTPUT
+                echo "::error::Scrape job failed: $ERROR_MSG"
+                exit 1
+              fi
+            done
+
+            echo "::error::Timed out waiting for async scrape job $JOB_ID to complete"
+            echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+            echo "status=timeout" >> $GITHUB_OUTPUT
+            exit 1
+
+          elif [ "$SYNC_EXIT" -ne 0 ]; then
+            echo "::error::curl failed with exit code $SYNC_EXIT"
+            exit 1
+          fi
+
+          # Sync succeeded — parse the response
           HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -n1)
           BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
 

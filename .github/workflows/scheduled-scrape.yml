@@ -82,12 +82,19 @@ jobs:
             echo "::warning::Sync request timed out (curl exit 28). Falling back to async + polling..."
 
             # Kick off async scrape
+            ASYNC_EXIT=0
             ASYNC_RESPONSE=$(curl -s -w "\n%{http_code}" \
               --max-time 60 \
               --connect-timeout 30 \
               -X POST "${{ env.API_URL }}/api/scrape" \
               -H "Content-Type: application/json" \
-              -H "X-API-Key: ${{ env.API_KEY }}")
+              -H "X-API-Key: ${{ env.API_KEY }}") || ASYNC_EXIT=$?
+
+            if [ "$ASYNC_EXIT" -ne 0 ]; then
+              echo "::error::Async curl failed with exit code $ASYNC_EXIT"
+              exit 1
+            fi
+
             ASYNC_CODE=$(echo "$ASYNC_RESPONSE" | tail -n1)
             ASYNC_BODY=$(echo "$ASYNC_RESPONSE" | sed '$d')
 

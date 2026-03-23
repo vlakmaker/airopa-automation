@@ -123,10 +123,17 @@ jobs:
               sleep 30
               ATTEMPTS=$((ATTEMPTS + 1))
 
+              POLL_EXIT=0
               POLL_RESPONSE=$(curl -s -w "\n%{http_code}" \
                 --max-time 30 \
                 --connect-timeout 10 \
-                "${{ env.API_URL }}/api/jobs/$JOB_ID")
+                "${{ env.API_URL }}/api/jobs/$JOB_ID") || POLL_EXIT=$?
+
+              if [ "$POLL_EXIT" -ne 0 ]; then
+                echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — curl failed (exit $POLL_EXIT), retrying..."
+                continue
+              fi
+
               POLL_CODE=$(echo "$POLL_RESPONSE" | tail -n1)
               POLL_BODY=$(echo "$POLL_RESPONSE" | sed '$d')
 

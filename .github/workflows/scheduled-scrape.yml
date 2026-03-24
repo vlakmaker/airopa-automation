@@ -140,11 +140,21 @@ jobs:
             POLL_CODE=$(echo "$POLL_RESPONSE" | tail -n1)
             POLL_BODY=$(echo "$POLL_RESPONSE" | sed '$d')
 
-            # Reset consecutive error counter on any successful response
+            if [ "$POLL_CODE" != "200" ]; then
+              CONSECUTIVE_ERRORS=$((CONSECUTIVE_ERRORS + 1))
+              echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — unexpected HTTP $POLL_CODE [$CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS consecutive errors]"
+              if [ "$CONSECUTIVE_ERRORS" -ge "$MAX_CONSECUTIVE_ERRORS" ]; then
+                echo "::error::Too many consecutive poll failures — server may be down"
+                exit 1
+              fi
+              continue
+            fi
+
+            # Reset consecutive error counter on successful 200 response
             CONSECUTIVE_ERRORS=0
 
             STATUS=$(echo "$POLL_BODY" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')
-            echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — HTTP $POLL_CODE — status: $STATUS"
+            echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — status: $STATUS"
 
             if [ "$STATUS" = "completed" ]; then
               RESULT_COUNT=$(echo "$POLL_BODY" | grep -o '"result_count":[0-9]*' | sed 's/"result_count"://')

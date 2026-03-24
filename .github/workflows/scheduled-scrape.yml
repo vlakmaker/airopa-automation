@@ -63,144 +63,110 @@ jobs:
           fi
 
           # ---------------------------------------------------------
-          # Strategy: try the sync endpoint first (fast path).
-          # If it times out (curl exit 28) — which can happen when the
-          # pipeline takes a long time or a proxy drops the idle
-          # connection — fall back to async + polling.
+          # Strategy: use async + polling as the primary approach.
+          #
+          # The sync endpoint (/api/scrape/sync) holds the connection
+          # open for the full pipeline run.  Traefik and other proxies
+          # tend to drop idle connections well before the pipeline
+          # finishes, which kills the uvicorn worker and leaves the
+          # server unable to handle the subsequent async fallback (404).
+          #
+          # Async is more resilient: the POST returns immediately with
+          # a job_id, and we poll /api/jobs/{id} until it completes.
           # ---------------------------------------------------------
 
-          echo "Attempting synchronous scrape..."
-          SYNC_EXIT=0
-          HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
-            --max-time 900 \
+          echo "Triggering async scrape..."
+          ASYNC_EXIT=0
+          ASYNC_RESPONSE=$(curl -s -w "\n%{http_code}" \
+            --max-time 60 \
             --connect-timeout 30 \
-            -X POST "${{ env.API_URL }}/api/scrape/sync" \
+            -X POST "${{ env.API_URL }}/api/scrape" \
             -H "Content-Type: application/json" \
-            -H "X-API-Key: ${{ env.API_KEY }}") || SYNC_EXIT=$?
+            -H "X-API-Key: ${{ env.API_KEY }}") || ASYNC_EXIT=$?
 
-          if [ "$SYNC_EXIT" -eq 28 ]; then
-            echo "::warning::Sync request timed out (curl exit 28). Falling back to async + polling..."
+          if [ "$ASYNC_EXIT" -ne 0 ]; then
+            echo "::error::curl failed with exit code $ASYNC_EXIT"
+            exit 1
+          fi
 
-            # Kick off async scrape
-            ASYNC_EXIT=0
-            ASYNC_RESPONSE=$(curl -s -w "\n%{http_code}" \
-              --max-time 60 \
-              --connect-timeout 30 \
-              -X POST "${{ env.API_URL }}/api/scrape" \
-              -H "Content-Type: application/json" \
-              -H "X-API-Key: ${{ env.API_KEY }}") || ASYNC_EXIT=$?
+          ASYNC_CODE=$(echo "$ASYNC_RESPONSE" | tail -n1)
+          ASYNC_BODY=$(echo "$ASYNC_RESPONSE" | sed '$d')
 
-            if [ "$ASYNC_EXIT" -ne 0 ]; then
-              echo "::error::Async curl failed with exit code $ASYNC_EXIT"
-              exit 1
-            fi
+          echo "HTTP status: $ASYNC_CODE"
+          echo "Response: $ASYNC_BODY"
 
-            ASYNC_CODE=$(echo "$ASYNC_RESPONSE" | tail -n1)
-            ASYNC_BODY=$(echo "$ASYNC_RESPONSE" | sed '$d')
+          if [ "$ASYNC_CODE" != "200" ]; then
+            echo "::error::Scrape request failed with HTTP $ASYNC_CODE"
+            echo "::error::Response: $ASYNC_BODY"
+            exit 1
+          fi
 
-            echo "Async HTTP status: $ASYNC_CODE"
-            echo "Async response: $ASYNC_BODY"
+          JOB_ID=$(echo "$ASYNC_BODY" | grep -o '"job_id":"[^"]*"' | sed 's/"job_id":"//;s/"//')
 
-            if [ "$ASYNC_CODE" != "200" ]; then
-              echo "::error::Async scrape request failed with HTTP $ASYNC_CODE"
-              exit 1
-            fi
+          if [ -z "$JOB_ID" ]; then
+            echo "::error::Could not extract job_id from response"
+            exit 1
+          fi
 
-            JOB_ID=$(echo "$ASYNC_BODY" | grep -o '"job_id":"[^"]*"' | sed 's/"job_id":"//;s/"//')
+          echo "Job started: $JOB_ID"
+          echo "Polling for completion (max 20 min)..."
 
-            if [ -z "$JOB_ID" ]; then
-              echo "::error::Could not extract job_id from async response"
-              exit 1
-            fi
+          # Poll every 30 seconds for up to 20 minutes (40 attempts)
+          ATTEMPTS=0
+          MAX_ATTEMPTS=40
+          CONSECUTIVE_ERRORS=0
+          MAX_CONSECUTIVE_ERRORS=5
 
-            echo "Async job started: $JOB_ID"
-            echo "Polling for completion (max 20 min)..."
+          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+            sleep 30
+            ATTEMPTS=$((ATTEMPTS + 1))
 
-            # Poll every 30 seconds for up to 20 minutes (40 attempts)
-            ATTEMPTS=0
-            MAX_ATTEMPTS=40
-            while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
-              sleep 30
-              ATTEMPTS=$((ATTEMPTS + 1))
+            POLL_EXIT=0
+            POLL_RESPONSE=$(curl -s -w "\n%{http_code}" \
+              --max-time 30 \
+              --connect-timeout 10 \
+              "${{ env.API_URL }}/api/jobs/$JOB_ID") || POLL_EXIT=$?
 
-              POLL_EXIT=0
-              POLL_RESPONSE=$(curl -s -w "\n%{http_code}" \
-                --max-time 30 \
-                --connect-timeout 10 \
-                "${{ env.API_URL }}/api/jobs/$JOB_ID") || POLL_EXIT=$?
-
-              if [ "$POLL_EXIT" -ne 0 ]; then
-                echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — curl failed (exit $POLL_EXIT), retrying..."
-                continue
-              fi
-
-              POLL_CODE=$(echo "$POLL_RESPONSE" | tail -n1)
-              POLL_BODY=$(echo "$POLL_RESPONSE" | sed '$d')
-
-              STATUS=$(echo "$POLL_BODY" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')
-              echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — status: $STATUS"
-
-              if [ "$STATUS" = "completed" ]; then
-                RESULT_COUNT=$(echo "$POLL_BODY" | grep -o '"result_count":[0-9]*' | sed 's/"result_count"://')
-                echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-                echo "status=completed" >> $GITHUB_OUTPUT
-                echo "result_count=$RESULT_COUNT" >> $GITHUB_OUTPUT
-                echo "Scrape completed successfully!"
-                echo "Articles stored: $RESULT_COUNT"
-                exit 0
-              elif [ "$STATUS" = "failed" ]; then
-                ERROR_MSG=$(echo "$POLL_BODY" | grep -o '"error_message":"[^"]*"' | sed 's/"error_message":"//;s/"//')
-                echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-                echo "status=failed" >> $GITHUB_OUTPUT
-                echo "::error::Scrape job failed: $ERROR_MSG"
+            if [ "$POLL_EXIT" -ne 0 ]; then
+              CONSECUTIVE_ERRORS=$((CONSECUTIVE_ERRORS + 1))
+              echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — curl failed (exit $POLL_EXIT) [$CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS consecutive errors]"
+              if [ "$CONSECUTIVE_ERRORS" -ge "$MAX_CONSECUTIVE_ERRORS" ]; then
+                echo "::error::Too many consecutive poll failures — server may be down"
                 exit 1
               fi
-            done
-
-            echo "::error::Timed out waiting for async scrape job $JOB_ID to complete"
-            echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-            echo "status=timeout" >> $GITHUB_OUTPUT
-            exit 1
-
-          elif [ "$SYNC_EXIT" -ne 0 ]; then
-            echo "::error::curl failed with exit code $SYNC_EXIT"
-            exit 1
-          fi
-
-          # Sync succeeded — parse the response
-          HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -n1)
-          BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
-
-          echo "HTTP status: $HTTP_CODE"
-          echo "Response: $BODY"
-
-          # Extract fields using grep/sed (no jq dependency)
-          JOB_ID=$(echo "$BODY" | grep -o '"job_id":"[^"]*"' | sed 's/"job_id":"//;s/"//')
-          STATUS=$(echo "$BODY" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')
-          RESULT_COUNT=$(echo "$BODY" | grep -o '"result_count":[0-9]*' | sed 's/"result_count"://')
-          ERROR_MSG=$(echo "$BODY" | grep -o '"error_message":"[^"]*"' | sed 's/"error_message":"//;s/"//')
-
-          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-          echo "status=$STATUS" >> $GITHUB_OUTPUT
-          echo "result_count=$RESULT_COUNT" >> $GITHUB_OUTPUT
-
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::Scrape request failed with HTTP $HTTP_CODE"
-            if [ -n "$ERROR_MSG" ]; then
-              echo "::error::Error: $ERROR_MSG"
+              continue
             fi
-            exit 1
-          fi
 
-          if [ "$STATUS" = "completed" ]; then
-            echo "Scrape completed successfully!"
-            echo "Articles stored: $RESULT_COUNT"
-          elif [ "$STATUS" = "failed" ]; then
-            echo "::error::Scrape job failed: $ERROR_MSG"
-            exit 1
-          else
-            echo "::warning::Unexpected job status: $STATUS"
-          fi
+            POLL_CODE=$(echo "$POLL_RESPONSE" | tail -n1)
+            POLL_BODY=$(echo "$POLL_RESPONSE" | sed '$d')
+
+            # Reset consecutive error counter on any successful response
+            CONSECUTIVE_ERRORS=0
+
+            STATUS=$(echo "$POLL_BODY" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')
+            echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — HTTP $POLL_CODE — status: $STATUS"
+
+            if [ "$STATUS" = "completed" ]; then
+              RESULT_COUNT=$(echo "$POLL_BODY" | grep -o '"result_count":[0-9]*' | sed 's/"result_count"://')
+              echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+              echo "status=completed" >> $GITHUB_OUTPUT
+              echo "result_count=$RESULT_COUNT" >> $GITHUB_OUTPUT
+              echo "Scrape completed successfully!"
+              echo "Articles stored: $RESULT_COUNT"
+              exit 0
+            elif [ "$STATUS" = "failed" ]; then
+              ERROR_MSG=$(echo "$POLL_BODY" | grep -o '"error_message":"[^"]*"' | sed 's/"error_message":"//;s/"//')
+              echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+              echo "status=failed" >> $GITHUB_OUTPUT
+              echo "::error::Scrape job failed: $ERROR_MSG"
+              exit 1
+            fi
+          done
+
+          echo "::error::Timed out waiting for scrape job $JOB_ID to complete after 20 minutes"
+          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+          echo "status=timeout" >> $GITHUB_OUTPUT
+          exit 1
 
       - name: Report results
         if: always()

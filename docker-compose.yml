@@ -21,6 +21,11 @@ services:
       - "traefik.http.routers.airopa.entrypoints=websecure"
       - "traefik.http.routers.airopa.tls.certresolver=letsencrypt"
       - "traefik.http.services.airopa.loadbalancer.server.port=8000"
+      # Increase response timeout for long-running scrape requests (25 min)
+      - "traefik.http.services.airopa.loadbalancer.responseforwarding.flushinterval=100ms"
+      - "traefik.http.serversTransports.airopa-transport.forwardingTimeouts.responseHeaderTimeout=1500s"
+      - "traefik.http.serversTransports.airopa-transport.forwardingTimeouts.dialTimeout=30s"
+      - "traefik.http.services.airopa.loadbalancer.serverstransport=airopa-transport@docker"
 
   airopa-db:
     image: postgres:16-alpine
@@ -59,21 +64,52 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        echo "AIropa cron: scraping every 6 hours"
+        echo "AIropa cron: scraping every 6 hours (async pattern)"
         while true; do
-          echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Running scrape..."
+          echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Triggering scrape..."
           python -c "
-        import urllib.request, json, os
-        url = os.environ['AIROPA_API_URL'] + '/api/scrape/sync'
+        import urllib.request, json, os, time
+
+        base_url = os.environ['AIROPA_API_URL']
         api_key = os.environ.get('API_KEY', '')
-        req = urllib.request.Request(url, method='POST',
+
+        # Step 1: Trigger async scrape (returns immediately)
+        req = urllib.request.Request(base_url + '/api/scrape', method='POST',
             headers={'Content-Type': 'application/json', 'X-API-Key': api_key})
         try:
-            resp = urllib.request.urlopen(req, timeout=600)
+            resp = urllib.request.urlopen(req, timeout=30)
             data = json.loads(resp.read())
-            print(f'  Status: {data.get(\"status\")}, Articles: {data.get(\"result_count\", \"N/A\")}')
+            job_id = data.get('job_id')
+            print(f'  Job triggered: {job_id}')
         except Exception as e:
-            print(f'  Error: {e}')
+            print(f'  Error triggering scrape: {e}')
+            raise SystemExit(0)
+
+        # Step 2: Poll for completion (max 30 min, every 30s)
+        max_polls = 60
+        for i in range(1, max_polls + 1):
+            time.sleep(30)
+            try:
+                poll_req = urllib.request.Request(base_url + f'/api/jobs/{job_id}')
+                poll_resp = urllib.request.urlopen(poll_req, timeout=15)
+                status_data = json.loads(poll_resp.read())
+                status = status_data.get('status')
+
+                if status == 'completed':
+                    count = status_data.get('result_count', 0)
+                    print(f'  Completed: {count} articles stored')
+                    break
+                elif status == 'failed':
+                    err = status_data.get('error_message', 'unknown')
+                    print(f'  Failed: {err}')
+                    break
+                else:
+                    if i % 10 == 0:
+                        print(f'  Poll {i}/{max_polls} — status: {status}')
+            except Exception as e:
+                print(f'  Poll {i}/{max_polls} — error: {e}')
+        else:
+            print(f'  Timed out after {max_polls * 30 // 60} minutes')
         "
           echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Next run in 6 hours"
           sleep 21600

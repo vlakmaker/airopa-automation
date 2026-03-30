@@ -22,6 +22,7 @@ jobs:
   scrape:
     name: Trigger Content Scrape
     runs-on: ubuntu-latest
+    timeout-minutes: 35
 
     steps:
       - name: Display trigger info
@@ -37,8 +38,8 @@ jobs:
         run: |
           echo "Checking API health..."
           HEALTH_RESPONSE=$(curl -s -w "\n%{http_code}" \
+            --connect-timeout 15 \
             --max-time 30 \
-            --connect-timeout 10 \
             "${{ env.API_URL }}/api/health")
           HTTP_CODE=$(echo "$HEALTH_RESPONSE" | tail -n1)
           BODY=$(echo "$HEALTH_RESPONSE" | sed '$d')
@@ -53,8 +54,8 @@ jobs:
 
           echo "API is healthy"
 
-      - name: Run scrape
-        id: scrape
+      - name: Trigger async scrape
+        id: trigger
         run: |
           # Check if API key is configured
           if [ -z "${{ env.API_KEY }}" ]; then
@@ -62,24 +63,13 @@ jobs:
             exit 1
           fi
 
-          # ---------------------------------------------------------
-          # Strategy: use async + polling as the primary approach.
-          #
-          # The sync endpoint (/api/scrape/sync) holds the connection
-          # open for the full pipeline run.  Traefik and other proxies
-          # tend to drop idle connections well before the pipeline
-          # finishes, which kills the uvicorn worker and leaves the
-          # server unable to handle the subsequent async fallback (404).
-          #
-          # Async is more resilient: the POST returns immediately with
-          # a job_id, and we poll /api/jobs/{id} until it completes.
-          # ---------------------------------------------------------
-
           echo "Triggering async scrape..."
+
+          # Call async endpoint — returns immediately with job_id
           ASYNC_EXIT=0
-          ASYNC_RESPONSE=$(curl -s -w "\n%{http_code}" \
-            --max-time 60 \
-            --connect-timeout 30 \
+          HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
+            --connect-timeout 15 \
+            --max-time 30 \
             -X POST "${{ env.API_URL }}/api/scrape" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: ${{ env.API_KEY }}") || ASYNC_EXIT=$?
@@ -89,92 +79,100 @@ jobs:
             exit 1
           fi
 
-          ASYNC_CODE=$(echo "$ASYNC_RESPONSE" | tail -n1)
-          ASYNC_BODY=$(echo "$ASYNC_RESPONSE" | sed '$d')
+          HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -n1)
+          BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
 
-          echo "HTTP status: $ASYNC_CODE"
-          echo "Response: $ASYNC_BODY"
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response: $BODY"
 
-          if [ "$ASYNC_CODE" != "200" ]; then
-            echo "::error::Scrape request failed with HTTP $ASYNC_CODE"
-            echo "::error::Response: $ASYNC_BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Failed to trigger scrape (HTTP $HTTP_CODE): $BODY"
             exit 1
           fi
 
-          JOB_ID=$(echo "$ASYNC_BODY" | grep -o '"job_id":"[^"]*"' | sed 's/"job_id":"//;s/"//')
+          # Extract job_id
+          JOB_ID=$(echo "$BODY" | grep -o '"job_id":"[^"]*"' | sed 's/"job_id":"//;s/"//')
 
           if [ -z "$JOB_ID" ]; then
-            echo "::error::Could not extract job_id from response"
+            echo "::error::No job_id returned in response"
             exit 1
           fi
 
           echo "Job started: $JOB_ID"
-          echo "Polling for completion (max 20 min)..."
+          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
 
-          # Poll every 30 seconds for up to 20 minutes (40 attempts)
-          ATTEMPTS=0
-          MAX_ATTEMPTS=40
+      - name: Poll for completion
+        id: scrape
+        run: |
+          JOB_ID="${{ steps.trigger.outputs.job_id }}"
+          MAX_POLLS=60
+          POLL_INTERVAL=30
+          MAX_WAIT_MIN=$(( MAX_POLLS * POLL_INTERVAL / 60 ))
           CONSECUTIVE_ERRORS=0
           MAX_CONSECUTIVE_ERRORS=5
 
-          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
-            sleep 30
-            ATTEMPTS=$((ATTEMPTS + 1))
+          echo "Polling for completion (max ${MAX_WAIT_MIN} min)..."
 
+          for i in $(seq 1 $MAX_POLLS); do
+            # Short request — just fetching job status
             POLL_EXIT=0
             POLL_RESPONSE=$(curl -s -w "\n%{http_code}" \
-              --max-time 30 \
               --connect-timeout 10 \
+              --max-time 15 \
               "${{ env.API_URL }}/api/jobs/$JOB_ID") || POLL_EXIT=$?
 
             if [ "$POLL_EXIT" -ne 0 ]; then
               CONSECUTIVE_ERRORS=$((CONSECUTIVE_ERRORS + 1))
-              echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — curl failed (exit $POLL_EXIT) [$CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS consecutive errors]"
+              echo "  Poll $i/$MAX_POLLS — curl failed (exit $POLL_EXIT) [$CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS consecutive errors]"
               if [ "$CONSECUTIVE_ERRORS" -ge "$MAX_CONSECUTIVE_ERRORS" ]; then
                 echo "::error::Too many consecutive poll failures — server may be down"
                 exit 1
               fi
+              sleep $POLL_INTERVAL
               continue
             fi
 
-            POLL_CODE=$(echo "$POLL_RESPONSE" | tail -n1)
-            POLL_BODY=$(echo "$POLL_RESPONSE" | sed '$d')
+            HTTP_CODE=$(echo "$POLL_RESPONSE" | tail -n1)
+            BODY=$(echo "$POLL_RESPONSE" | sed '$d')
 
-            if [ "$POLL_CODE" != "200" ]; then
+            # Handle transient network/proxy errors gracefully
+            if [ "$HTTP_CODE" != "200" ]; then
               CONSECUTIVE_ERRORS=$((CONSECUTIVE_ERRORS + 1))
-              echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — unexpected HTTP $POLL_CODE [$CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS consecutive errors]"
+              echo "  Poll $i/$MAX_POLLS — HTTP $HTTP_CODE [$CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS consecutive errors]"
               if [ "$CONSECUTIVE_ERRORS" -ge "$MAX_CONSECUTIVE_ERRORS" ]; then
                 echo "::error::Too many consecutive poll failures — server may be down"
                 exit 1
               fi
+              sleep $POLL_INTERVAL
               continue
             fi
 
-            # Reset consecutive error counter on successful 200 response
+            # Reset consecutive error counter on successful response
             CONSECUTIVE_ERRORS=0
 
-            STATUS=$(echo "$POLL_BODY" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')
-            echo "  Poll $ATTEMPTS/$MAX_ATTEMPTS — status: $STATUS"
+            STATUS=$(echo "$BODY" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//')
 
             if [ "$STATUS" = "completed" ]; then
-              RESULT_COUNT=$(echo "$POLL_BODY" | grep -o '"result_count":[0-9]*' | sed 's/"result_count"://')
-              echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-              echo "status=completed" >> $GITHUB_OUTPUT
-              echo "result_count=$RESULT_COUNT" >> $GITHUB_OUTPUT
+              RESULT_COUNT=$(echo "$BODY" | grep -o '"result_count":[0-9]*' | sed 's/"result_count"://')
               echo "Scrape completed successfully!"
-              echo "Articles stored: $RESULT_COUNT"
+              echo "Articles stored: ${RESULT_COUNT:-0}"
+              echo "status=completed" >> $GITHUB_OUTPUT
+              echo "result_count=${RESULT_COUNT:-0}" >> $GITHUB_OUTPUT
               exit 0
             elif [ "$STATUS" = "failed" ]; then
-              ERROR_MSG=$(echo "$POLL_BODY" | grep -o '"error_message":"[^"]*"' | sed 's/"error_message":"//;s/"//')
-              echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-              echo "status=failed" >> $GITHUB_OUTPUT
+              ERROR_MSG=$(echo "$BODY" | grep -o '"error_message":"[^"]*"' | sed 's/"error_message":"//;s/"//')
               echo "::error::Scrape job failed: $ERROR_MSG"
+              echo "status=failed" >> $GITHUB_OUTPUT
+              echo "error_message=$ERROR_MSG" >> $GITHUB_OUTPUT
               exit 1
             fi
+
+            # Still queued or running
+            echo "  Poll $i/$MAX_POLLS — status: $STATUS"
+            sleep $POLL_INTERVAL
           done
 
-          echo "::error::Timed out waiting for scrape job $JOB_ID to complete after 20 minutes"
-          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+          echo "::error::Timed out waiting for scrape job $JOB_ID to complete after ${MAX_WAIT_MIN} minutes"
           echo "status=timeout" >> $GITHUB_OUTPUT
           exit 1
 
@@ -185,7 +183,7 @@ jobs:
           echo "SCRAPE JOB SUMMARY"
           echo "============================================"
           echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "Job ID: ${{ steps.scrape.outputs.job_id || 'N/A' }}"
+          echo "Job ID: ${{ steps.trigger.outputs.job_id || 'N/A' }}"
           echo "Status: ${{ steps.scrape.outputs.status || 'unknown' }}"
           echo "Articles stored: ${{ steps.scrape.outputs.result_count || 'N/A' }}"
           echo "============================================"

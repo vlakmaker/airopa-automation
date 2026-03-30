@@ -21,11 +21,7 @@ services:
       - "traefik.http.routers.airopa.entrypoints=websecure"
       - "traefik.http.routers.airopa.tls.certresolver=letsencrypt"
       - "traefik.http.services.airopa.loadbalancer.server.port=8000"
-      # Increase response timeout for long-running scrape requests (25 min)
       - "traefik.http.services.airopa.loadbalancer.responseforwarding.flushinterval=100ms"
-      - "traefik.http.serversTransports.airopa-transport.forwardingTimeouts.responseHeaderTimeout=1500s"
-      - "traefik.http.serversTransports.airopa-transport.forwardingTimeouts.dialTimeout=30s"
-      - "traefik.http.services.airopa.loadbalancer.serverstransport=airopa-transport@docker"
 
   airopa-db:
     image: postgres:16-alpine

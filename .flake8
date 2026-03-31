@@ -10,3 +10,5 @@ exclude =
     .env,
     build,
     dist
+per-file-ignores =
+    run_tests.py: F403, F405, C901

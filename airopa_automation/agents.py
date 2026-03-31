@@ -613,6 +613,127 @@ Respond in JSON only:
         "luxembourg",
     ]
 
+    # Keywords that signal the article is about AI, tech, or digital innovation.
+    # Used as a relevance gate in keyword-only classification to filter out
+    # off-topic content (e.g. geopolitics, fuel prices, lifestyle).
+    _TECH_RELEVANCE_KEYWORDS = [
+        # AI / Machine Learning
+        "artificial intelligence",
+        " ai ",
+        "ai-",
+        "machine learning",
+        "deep learning",
+        "neural network",
+        "large language model",
+        " llm",
+        "generative ai",
+        "chatgpt",
+        "openai",
+        "gpt-",
+        "transformer model",
+        "natural language processing",
+        " nlp ",
+        "computer vision",
+        "reinforcement learning",
+        "diffusion model",
+        # Technology / Software
+        "technology",
+        " tech ",
+        "software",
+        "hardware",
+        "semiconductor",
+        " chip ",
+        "microchip",
+        "quantum computing",
+        "cloud computing",
+        "cybersecurity",
+        "cyber security",
+        "blockchain",
+        "cryptocurrency",
+        "saas",
+        "platform",
+        "algorithm",
+        "automation",
+        "robotics",
+        " robot ",
+        "autonomous",
+        "self-driving",
+        # Startups / Digital business
+        "startup",
+        "start-up",
+        "venture capital",
+        "seed round",
+        "series a",
+        "series b",
+        "series c",
+        "fintech",
+        "healthtech",
+        "edtech",
+        "proptech",
+        "biotech",
+        "cleantech",
+        "deeptech",
+        "agritech",
+        "insurtech",
+        "neobank",
+        "unicorn",
+        # Digital innovation / Data
+        "digital innovation",
+        "digital transformation",
+        "data science",
+        "big data",
+        "open source",
+        "open-source",
+        "api ",
+        "developer",
+        "coding",
+        "programming",
+        # Tech policy
+        "ai act",
+        "ai regulation",
+        "digital markets act",
+        "digital services act",
+        "tech regulation",
+        "data protection",
+        "gdpr",
+        "ai ethics",
+        "ai governance",
+        "ai safety",
+    ]
+
+    @staticmethod
+    def _detect_country(title_lower: str, content_lower: str) -> str:
+        """Detect the primary country from title and content keywords.
+
+        Returns the country name, "Europe" for pan-European content,
+        or "" if no country is identified.
+        """
+        if "france" in title_lower or "france" in content_lower:
+            return "France"
+        if "germany" in title_lower or "germany" in content_lower:
+            return "Germany"
+        if "netherlands" in title_lower or "netherlands" in content_lower:
+            return "Netherlands"
+        if (
+            "europe" in title_lower
+            or "europe" in content_lower
+            or " eu " in f" {title_lower} "
+            or " eu " in f" {content_lower} "
+        ):
+            return "Europe"
+        return ""
+
+    def _is_tech_relevant(self, combined_text: str) -> bool:
+        """Check whether text contains any AI/tech relevance keywords.
+
+        Args:
+            combined_text: Lowercased, space-padded title + content.
+
+        Returns:
+            True if at least one tech relevance keyword is found.
+        """
+        return any(kw in combined_text for kw in self._TECH_RELEVANCE_KEYWORDS)
+
     def _classify_with_keywords(self, article: Article) -> Article:
         """Keyword-based classification fallback.
 
@@ -620,10 +741,24 @@ Respond in JSON only:
         keyword signals. EU relevance is estimated from source credibility
         and keyword density so that articles are not silently filtered
         downstream by the eu_relevance threshold.
+
+        Includes a tech/AI relevance gate: articles that contain no
+        AI or technology keywords are classified as "other" so they are
+        filtered out by the API layer.
         """
         title_lower = article.title.lower()
         content_lower = article.content.lower()
         combined = f" {title_lower} {content_lower} "
+
+        # --- STEP 0: Tech/AI relevance gate ---
+        # Check whether the article is about AI, tech, or digital innovation.
+        # If none of the relevance keywords appear, classify as "other".
+        if not self._is_tech_relevant(combined):
+            article.category = "other"
+            article.country = ""
+            article.eu_relevance = 0.0
+            article.confidence = 0.7
+            return article
 
         # Category classification
         if any(
@@ -644,22 +779,8 @@ Respond in JSON only:
         else:
             article.category = "industry"
 
-        # Country classification (check both title and content)
-        if "france" in title_lower or "france" in content_lower:
-            article.country = "France"
-        elif "germany" in title_lower or "germany" in content_lower:
-            article.country = "Germany"
-        elif "netherlands" in title_lower or "netherlands" in content_lower:
-            article.country = "Netherlands"
-        elif (
-            "europe" in title_lower
-            or "europe" in content_lower
-            or " eu " in f" {title_lower} "
-            or " eu " in f" {content_lower} "
-        ):
-            article.country = "Europe"
-        else:
-            article.country = ""
+        # Country classification
+        article.country = self._detect_country(title_lower, content_lower)
 
         # --- EU relevance estimation (keyword heuristic) ---
         eu_score = 0.0

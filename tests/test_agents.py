@@ -125,8 +125,8 @@ class TestCategoryClassifierAgent:
 
         assert result.country == "France"
 
-    def test_classify_default_category(self, mock_config):
-        """Test default category for unclassified content"""
+    def test_classify_default_category_no_tech_relevance(self, mock_config):
+        """Test that non-tech content is classified as 'other'"""
         mock_config.ai.classification_enabled = False
         classifier = CategoryClassifierAgent()
         article = Article(
@@ -138,7 +138,8 @@ class TestCategoryClassifierAgent:
 
         result = classifier.classify(article)
 
-        assert result.category == "industry"
+        assert result.category == "other"
+        assert result.eu_relevance == 0.0
 
     def test_classify_research_category(self, mock_config):
         """Test classification of research-related content"""
@@ -271,10 +272,10 @@ class TestCategoryClassifierAgent:
 
         classifier = CategoryClassifierAgent()
         article = Article(
-            title="Government Policy Update",
+            title="EU AI Act Regulation Update",
             url="http://test.com",
             source="Test",
-            content="New regulation proposed by government.",
+            content="New AI regulation proposed by government.",
         )
 
         result = classifier.classify(article)
@@ -465,6 +466,174 @@ class TestCategoryClassifierAgent:
         classifier.classify(article)
 
         assert classifier.last_telemetry is None
+
+
+@patch("airopa_automation.agents.config")
+class TestTechRelevanceGate:
+    """Test the AI/tech relevance keyword gate in keyword classification"""
+
+    def test_geopolitics_filtered_as_other(self, mock_config):
+        """Test that geopolitical content without tech angle is filtered"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Iran War Escalates as Tensions Rise in Middle East",
+            url="http://test.com",
+            source="Test",
+            content="Military operations continued as diplomatic talks stalled.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "other"
+        assert result.eu_relevance == 0.0
+
+    def test_fuel_prices_filtered_as_other(self, mock_config):
+        """Test that fuel/commodity content without tech angle is filtered"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Sky High Fuel Prices Hit European Consumers",
+            url="http://test.com",
+            source="Test",
+            content="Oil prices surged to record levels as supply chains "
+            "were disrupted by ongoing conflicts.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "other"
+        assert result.eu_relevance == 0.0
+
+    def test_lifestyle_filtered_as_other(self, mock_config):
+        """Test that lifestyle content is filtered"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Psychology Says People Who Enjoy Grocery Shopping Alone "
+            "Possess These Traits",
+            url="http://test.com",
+            source="Test",
+            content="A new psychological study on consumer behavior and "
+            "personality types reveals interesting patterns.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "other"
+
+    def test_ai_article_passes_relevance_gate(self, mock_config):
+        """Test that AI content passes the relevance gate"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="New AI Model Beats Benchmarks",
+            url="http://test.com",
+            source="Test",
+            content="A new artificial intelligence model has achieved "
+            "state-of-the-art results on multiple benchmarks.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category != "other"
+
+    def test_startup_with_tech_passes_gate(self, mock_config):
+        """Test that startup content with tech keywords passes"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="French AI Startup Raises EUR 400M Series B",
+            url="http://test.com",
+            source="Test",
+            content="The startup company has received investment for its "
+            "artificial intelligence platform.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "startups"
+
+    def test_tech_policy_passes_gate(self, mock_config):
+        """Test that tech policy content passes the relevance gate"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="EU AI Act Enforcement Timeline Announced",
+            url="http://test.com",
+            source="Test",
+            content="The European Union has announced the enforcement "
+            "timeline for the AI Act regulation.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "policy"
+
+    def test_technology_keyword_passes_gate(self, mock_config):
+        """Test that generic technology content passes"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Tech Giant Deploys New Platform",
+            url="http://test.com",
+            source="Test",
+            content="A major technology deployment across the enterprise "
+            "using cloud computing infrastructure.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category != "other"
+
+    def test_cybersecurity_passes_gate(self, mock_config):
+        """Test that cybersecurity content passes the relevance gate"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Major Cybersecurity Breach at European Bank",
+            url="http://test.com",
+            source="Test",
+            content="Hackers exploited a cybersecurity vulnerability "
+            "in the banking software platform.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category != "other"
+
+    def test_non_tech_regulation_filtered(self, mock_config):
+        """Test that non-tech government/regulation content is filtered"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="New Agricultural Subsidies Law Passed",
+            url="http://test.com",
+            source="Test",
+            content="The government approved new agricultural regulation "
+            "affecting farmers across the region.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "other"
+
+    def test_other_category_confidence(self, mock_config):
+        """Test that 'other' from relevance gate gets confidence 0.7"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Local Sports Team Wins Championship",
+            url="http://test.com",
+            source="Test",
+            content="The football team celebrated their victory.",
+        )
+
+        result = classifier.classify(article)
+
+        assert result.category == "other"
+        assert result.confidence == 0.7
+        assert result.country == ""
 
 
 class TestArticleEuRelevance:

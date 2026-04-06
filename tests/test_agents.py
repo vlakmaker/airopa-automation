@@ -389,7 +389,7 @@ class TestCategoryClassifierAgent:
         assert classifier.last_telemetry["tokens_in"] == 500
         assert classifier.last_telemetry["tokens_out"] == 30
         assert classifier.last_telemetry["llm_latency_ms"] == 250
-        assert classifier.last_telemetry["prompt_version"] == "classification_v2"
+        assert classifier.last_telemetry["prompt_version"] == "classification_v3"
         assert classifier.last_telemetry["fallback_reason"] is None
 
     @patch("airopa_automation.llm.llm_complete")
@@ -634,6 +634,109 @@ class TestTechRelevanceGate:
         assert result.category == "other"
         assert result.confidence == 0.7
         assert result.country == ""
+
+
+@patch("airopa_automation.agents.classifier.config")
+class TestClassificationImprovements:
+    """Test tighter classification to reduce non-relevant articles"""
+
+    def test_single_weak_keyword_filtered(self, mock_config):
+        """A single weak keyword like 'platform' should NOT pass the gate"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="New Political Platform Launches Campaign",
+            url="http://test.com",
+            source="Test",
+            content="The party platform aims to attract younger voters.",
+        )
+        result = classifier.classify(article)
+        assert result.category == "other"
+
+    def test_two_weak_keywords_pass(self, mock_config):
+        """Two weak keywords together should pass the gate"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="New Software Platform Automates Manufacturing",
+            url="http://test.com",
+            source="Test",
+            content="The software platform uses automation to streamline "
+            "production technology in European factories.",
+        )
+        result = classifier.classify(article)
+        assert result.category != "other"
+
+    def test_eu_source_no_eu_content_low_score(self, mock_config):
+        """EU outlet reporting on US story should NOT inflate eu_relevance"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="OpenAI Launches New API Features",
+            url="http://test.com",
+            source="Sifted",
+            content="OpenAI announced new artificial intelligence API "
+            "capabilities for developers in San Francisco.",
+        )
+        result = classifier.classify(article)
+        # Without EU keywords, source boost should not apply
+        assert result.eu_relevance < 3.0
+
+    def test_eu_source_with_eu_content_gets_boost(self, mock_config):
+        """EU outlet reporting on EU story should get the source boost"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="French AI Startup Raises Series B",
+            url="http://test.com",
+            source="Sifted",
+            content="The French startup company has received investment "
+            "for its artificial intelligence platform in Paris.",
+        )
+        result = classifier.classify(article)
+        # EU keywords + source boost + country
+        assert result.eu_relevance >= 5.0
+
+    def test_country_detection_adjective_form(self, mock_config):
+        """Country detection should work with adjective forms like 'French'"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="French AI Startup Expands",
+            url="http://test.com",
+            source="Test",
+            content="The startup uses machine learning for healthcare.",
+        )
+        result = classifier.classify(article)
+        assert result.country == "France"
+
+    def test_country_detection_city(self, mock_config):
+        """Country detection should work with major EU cities"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Berlin AI Hub Grows",
+            url="http://test.com",
+            source="Test",
+            content="The machine learning research hub in Berlin announced "
+            "new partnerships.",
+        )
+        result = classifier.classify(article)
+        assert result.country == "Germany"
+
+    def test_generic_business_filtered(self, mock_config):
+        """Generic business news mentioning 'technology' once is filtered"""
+        mock_config.ai.classification_enabled = False
+        classifier = CategoryClassifierAgent()
+        article = Article(
+            title="Supply Chain Disruptions Continue",
+            url="http://test.com",
+            source="Test",
+            content="Companies face supply chain challenges. One firm "
+            "said technology could help but offered no specifics.",
+        )
+        result = classifier.classify(article)
+        assert result.category == "other"
 
 
 class TestArticleEuRelevance:

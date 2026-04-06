@@ -16,7 +16,9 @@ a European AI and technology news platform.
 Your job is to classify articles AND filter out irrelevant content.
 
 STEP 1: RELEVANCE CHECK
-Is this article about AI, technology, startups, tech policy, or digital innovation?
+Is this article PRIMARILY about AI, machine learning, tech startups, EU tech policy,
+or digital innovation? General business, politics, lifestyle, or science articles
+that merely MENTION technology are NOT relevant.
 If NO -> set category to "other", country to "", eu_relevance to 0, confidence to 0.9.
 
 STEP 2: CLASSIFY into exactly ONE category based on the PRIMARY focus:
@@ -68,7 +70,7 @@ Content: {content}
 Respond in JSON only:
 {{"category": "...", "country": "...", "eu_relevance": N, "confidence": N.N}}"""
 
-    PROMPT_VERSION = "classification_v2"
+    PROMPT_VERSION = "classification_v3"
 
     def __init__(self):
         self.last_telemetry = None  # Telemetry from most recent classify call
@@ -256,10 +258,9 @@ Respond in JSON only:
         "luxembourg",
     ]
 
-    # Keywords that signal the article is about AI, tech, or digital innovation.
-    # Used as a relevance gate in keyword-only classification to filter out
-    # off-topic content (e.g. geopolitics, fuel prices, lifestyle).
-    _TECH_RELEVANCE_KEYWORDS = [
+    # Strong keywords: a single match is enough to pass the relevance gate.
+    # These are unambiguously about AI, tech, or digital innovation.
+    _TECH_KEYWORDS_STRONG = [
         # AI / Machine Learning
         "artificial intelligence",
         " ai ",
@@ -279,13 +280,8 @@ Respond in JSON only:
         "computer vision",
         "reinforcement learning",
         "diffusion model",
-        # Technology / Software
-        "technology",
-        " tech ",
-        "software",
-        "hardware",
+        # Core tech
         "semiconductor",
-        " chip ",
         "microchip",
         "quantum computing",
         "cloud computing",
@@ -294,12 +290,7 @@ Respond in JSON only:
         "blockchain",
         "cryptocurrency",
         "saas",
-        "platform",
-        "algorithm",
-        "automation",
         "robotics",
-        " robot ",
-        "autonomous",
         "self-driving",
         # Startups / Digital business
         "startup",
@@ -313,24 +304,16 @@ Respond in JSON only:
         "healthtech",
         "edtech",
         "proptech",
-        "biotech",
-        "cleantech",
         "deeptech",
         "agritech",
         "insurtech",
         "neobank",
-        "unicorn",
-        # Digital innovation / Data
+        # Digital innovation
         "digital innovation",
         "digital transformation",
         "data science",
-        "big data",
         "open source",
         "open-source",
-        "api ",
-        "developer",
-        "coding",
-        "programming",
         # Tech policy
         "ai act",
         "ai regulation",
@@ -344,38 +327,113 @@ Respond in JSON only:
         "ai safety",
     ]
 
-    @staticmethod
-    def _detect_country(title_lower: str, content_lower: str) -> str:
+    # Weak keywords: need 2+ matches to pass the relevance gate.
+    # These are common in tech articles but also appear in non-tech contexts
+    # (e.g. "platform" in politics, "automation" in manufacturing).
+    _TECH_KEYWORDS_WEAK = [
+        "technology",
+        " tech ",
+        "software",
+        "hardware",
+        " chip ",
+        "platform",
+        "algorithm",
+        "automation",
+        " robot ",
+        "autonomous",
+        "biotech",
+        "cleantech",
+        "unicorn",
+        "big data",
+        "api ",
+        "developer",
+        "coding",
+        "programming",
+    ]
+
+    # Country detection: maps keywords to country names.
+    # Checked in order; first match wins. "Europe" is last (catch-all).
+    _COUNTRY_SIGNALS = [
+        (["france", "french", "paris"], "France"),
+        (["germany", "german", "berlin", "munich"], "Germany"),
+        (["netherlands", "dutch", "amsterdam"], "Netherlands"),
+        (["spain", "spanish", "madrid", "barcelona"], "Spain"),
+        (["italy", "italian", "rome", "milan"], "Italy"),
+        (["sweden", "swedish", "stockholm"], "Sweden"),
+        (["denmark", "danish", "copenhagen"], "Denmark"),
+        (["finland", "finnish", "helsinki"], "Finland"),
+        (["ireland", "irish", "dublin"], "Ireland"),
+        (["poland", "polish", "warsaw"], "Poland"),
+        (["austria", "austrian", "vienna"], "Austria"),
+        (["belgium", "belgian"], "Belgium"),
+        (["portugal", "portuguese", "lisbon"], "Portugal"),
+        (["czech", "prague"], "Czech Republic"),
+        (["romania", "romanian", "bucharest"], "Romania"),
+        (["hungary", "hungarian", "budapest"], "Hungary"),
+        (["greece", "greek", "athens"], "Greece"),
+        (["estonia", "estonian", "tallinn"], "Estonia"),
+        (["latvia", "latvian", "riga"], "Latvia"),
+        (["lithuania", "lithuanian", "vilnius"], "Lithuania"),
+        (["croatia", "croatian", "zagreb"], "Croatia"),
+        (["slovenia", "slovenian", "ljubljana"], "Slovenia"),
+        (["slovakia", "slovak", "bratislava"], "Slovakia"),
+        (["bulgaria", "bulgarian", "sofia"], "Bulgaria"),
+        (
+            [
+                "luxembourg",
+            ],
+            "Luxembourg",
+        ),
+        (
+            [
+                "malta",
+            ],
+            "Malta",
+        ),
+        (
+            [
+                "cyprus",
+            ],
+            "Cyprus",
+        ),
+    ]
+
+    @classmethod
+    def _detect_country(cls, title_lower: str, content_lower: str) -> str:
         """Detect the primary country from title and content keywords.
 
         Returns the country name, "Europe" for pan-European content,
         or "" if no country is identified.
         """
-        if "france" in title_lower or "france" in content_lower:
-            return "France"
-        if "germany" in title_lower or "germany" in content_lower:
-            return "Germany"
-        if "netherlands" in title_lower or "netherlands" in content_lower:
-            return "Netherlands"
-        if (
-            "europe" in title_lower
-            or "europe" in content_lower
-            or " eu " in f" {title_lower} "
-            or " eu " in f" {content_lower} "
-        ):
+        combined = f"{title_lower} {content_lower}"
+        for keywords, country in cls._COUNTRY_SIGNALS:
+            if any(kw in combined for kw in keywords):
+                return country
+        # Pan-European catch-all
+        if "europe" in combined or "european" in combined or " eu " in f" {combined} ":
             return "Europe"
         return ""
 
     def _is_tech_relevant(self, combined_text: str) -> bool:
-        """Check whether text contains any AI/tech relevance keywords.
+        """Check whether text contains AI/tech relevance keywords.
+
+        Uses a two-tier system:
+        - Strong keywords (e.g. "machine learning"): one match is enough
+        - Weak keywords (e.g. "platform", "automation"): need 2+ matches
+
+        This prevents generic business articles that mention "platform" or
+        "technology" once from passing the gate.
 
         Args:
             combined_text: Lowercased, space-padded title + content.
 
         Returns:
-            True if at least one tech relevance keyword is found.
+            True if the article is about AI/tech.
         """
-        return any(kw in combined_text for kw in self._TECH_RELEVANCE_KEYWORDS)
+        if any(kw in combined_text for kw in self._TECH_KEYWORDS_STRONG):
+            return True
+        weak_hits = sum(1 for kw in self._TECH_KEYWORDS_WEAK if kw in combined_text)
+        return weak_hits >= 2
 
     def _classify_with_keywords(self, article: Article) -> Article:
         """Keyword-based classification fallback.
@@ -428,19 +486,22 @@ Respond in JSON only:
         # --- EU relevance estimation (keyword heuristic) ---
         eu_score = 0.0
 
-        # Signal 1: Source is a known European outlet (+4.0)
-        if article.source in self._EU_SOURCES:
-            eu_score += 4.0
-
-        # Signal 2: EU keywords in title (+2.0 each, max +4.0)
+        # Signal 1: EU keywords in title (+2.0 each, max +4.0)
         title_hits = sum(1 for kw in self._EU_KEYWORDS if kw in f" {title_lower} ")
         eu_score += min(title_hits * 2.0, 4.0)
 
-        # Signal 3: EU keywords in content (+0.5 each, max +3.0)
+        # Signal 2: EU keywords in content (+0.5 each, max +3.0)
         content_hits = sum(1 for kw in self._EU_KEYWORDS if kw in combined)
         # Subtract title hits to avoid double-counting
         content_only_hits = max(content_hits - title_hits, 0)
         eu_score += min(content_only_hits * 0.5, 3.0)
+
+        # Signal 3: Source is a known European outlet (+2.0)
+        # Only applies when the article also has EU keyword signals,
+        # so a US story published by a EU outlet doesn't inflate the score.
+        has_eu_keywords = title_hits > 0 or content_only_hits > 0
+        if article.source in self._EU_SOURCES and has_eu_keywords:
+            eu_score += 2.0
 
         # Signal 4: Country was identified (+1.0)
         if article.country:

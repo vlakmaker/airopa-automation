@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from bs4 import BeautifulSoup
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 def clean_content(raw: str) -> str:
@@ -31,7 +31,7 @@ class Article(BaseModel):
     content: str
     summary: str = ""
     published_date: Optional[datetime] = None
-    scraped_date: datetime = datetime.now()
+    scraped_date: datetime = Field(default_factory=datetime.now)
     category: str = ""
     country: str = ""
     quality_score: float = 0.0

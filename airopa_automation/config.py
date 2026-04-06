@@ -73,8 +73,8 @@ class ScraperConfig(BaseModel):
 
 
 class AIConfig(BaseModel):
-    # LLM provider: "groq", "mistral", "openrouter", or "kilo"
-    provider: str = os.getenv("LLM_PROVIDER", "groq")
+    # LLM provider: "kilo", "groq", "mistral", or "openrouter"
+    provider: str = os.getenv("LLM_PROVIDER", "kilo")
     temperature: float = 0.3
     max_tokens: int = 1024
     # Groq
@@ -91,7 +91,7 @@ class AIConfig(BaseModel):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Kilo Gateway (OpenAI-compatible)
     kilo_api_key: str = os.getenv("KILO_API_KEY", "")
-    kilo_model: str = os.getenv("KILO_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
+    kilo_model: str = os.getenv("KILO_MODEL", "qwen/qwen3.6-plus:free")
     kilo_base_url: str = "https://api.kilo.ai/api/gateway"
     # Feature flags — control LLM rollout via env vars
     classification_enabled: bool = (

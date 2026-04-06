@@ -76,7 +76,7 @@ class TestArticle:
         assert article.image_url == "https://example.com/image.jpg"
 
 
-@patch("airopa_automation.agents.config")
+@patch("airopa_automation.agents.classifier.config")
 class TestCategoryClassifierAgent:
     """Test CategoryClassifierAgent keyword fallback"""
 
@@ -468,7 +468,7 @@ class TestCategoryClassifierAgent:
         assert classifier.last_telemetry is None
 
 
-@patch("airopa_automation.agents.config")
+@patch("airopa_automation.agents.classifier.config")
 class TestTechRelevanceGate:
     """Test the AI/tech relevance keyword gate in keyword classification"""
 
@@ -664,7 +664,7 @@ class TestArticleEuRelevance:
 class TestSummarizerAgent:
     """Test SummarizerAgent"""
 
-    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.summarizer.config")
     def test_summarize_disabled_returns_unchanged(self, mock_config):
         """Test that summarize does nothing when summary_enabled is False"""
         mock_config.ai.summary_enabled = False
@@ -683,7 +683,7 @@ class TestSummarizerAgent:
         assert summarizer.last_telemetry is None
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.summarizer.config")
     def test_summarize_with_llm_success(self, mock_config, mock_llm):
         """Test successful LLM summarization"""
         mock_config.ai.summary_enabled = True
@@ -710,7 +710,7 @@ class TestSummarizerAgent:
         assert "startup raised funding" in result.summary.lower()
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.summarizer.config")
     def test_summarize_with_llm_failure_returns_empty(self, mock_config, mock_llm):
         """Test that LLM failure leaves summary empty"""
         mock_config.ai.summary_enabled = True
@@ -737,7 +737,7 @@ class TestSummarizerAgent:
 
         assert result.summary == ""
 
-    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.summarizer.config")
     def test_summarize_skips_short_content(self, mock_config):
         """Test that articles with short content are skipped"""
         mock_config.ai.summary_enabled = True
@@ -756,7 +756,7 @@ class TestSummarizerAgent:
         assert summarizer.last_telemetry is None
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.summarizer.config")
     def test_summarize_telemetry_on_success(self, mock_config, mock_llm):
         """Test that last_telemetry is populated after successful summary"""
         mock_config.ai.summary_enabled = True
@@ -787,7 +787,7 @@ class TestSummarizerAgent:
         assert summarizer.last_telemetry["fallback_reason"] is None
 
     @patch("airopa_automation.llm.llm_complete")
-    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.summarizer.config")
     def test_summarize_telemetry_on_failure(self, mock_config, mock_llm):
         """Test that last_telemetry captures fallback_reason on failure"""
         mock_config.ai.summary_enabled = True
@@ -817,7 +817,7 @@ class TestSummarizerAgent:
         assert "Timeout" in summarizer.last_telemetry["fallback_reason"]
 
     @patch("airopa_automation.agents.SummarizerAgent._summarize_with_llm")
-    @patch("airopa_automation.agents.config")
+    @patch("airopa_automation.agents.summarizer.config")
     def test_summarize_shadow_mode_does_not_apply(self, mock_config, mock_llm):
         """Test shadow mode: runs LLM but does not apply summary"""
         mock_config.ai.summary_enabled = True
@@ -941,7 +941,7 @@ class TestScraperAgent:
         """Test RSS scraping with empty config"""
         mock_fetch.return_value = MagicMock(entries=[])
 
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.scraper.config") as mock_config:
             mock_config.scraper.rss_feeds = []
             mock_config.scraper.user_agent = "Test"
 
@@ -1028,7 +1028,7 @@ class TestScraperAgent:
         result = scraper._extract_rss_image(entry)
         assert result is None
 
-    @patch("airopa_automation.agents.NewspaperArticle")
+    @patch("airopa_automation.agents.scraper.NewspaperArticle")
     def test_extract_article_data_with_image(self, mock_newspaper):
         """Test _extract_article_data returns content and image URL"""
         mock_article = MagicMock()
@@ -1049,7 +1049,7 @@ class TestScraperAgent:
         assert content == "Article content here"
         assert image_url == "https://example.com/top.jpg"
 
-    @patch("airopa_automation.agents.NewspaperArticle")
+    @patch("airopa_automation.agents.scraper.NewspaperArticle")
     def test_extract_article_data_no_image(self, mock_newspaper):
         """Test _extract_article_data with no image available"""
         mock_article = MagicMock()
@@ -1128,7 +1128,7 @@ class TestScraperAgent:
         mock_feed.entries = [mock_entry]
         mock_fetch.return_value = mock_feed
 
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.scraper.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://sifted.eu/feed"]
             mock_config.scraper.max_articles_per_source = 10
             mock_config.scraper.max_article_age_days = 30
@@ -1166,7 +1166,7 @@ class TestScraperAgent:
         mock_feed.entries = [mock_entry]
         mock_fetch.return_value = mock_feed
 
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.scraper.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
             mock_config.scraper.max_articles_per_source = 10
             mock_config.scraper.max_article_age_days = 30
@@ -1199,7 +1199,7 @@ class TestScraperAgent:
         mock_feed.entries = [mock_entry]
         mock_fetch.return_value = mock_feed
 
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.scraper.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
             mock_config.scraper.max_articles_per_source = 10
             mock_config.scraper.max_article_age_days = 30
@@ -1235,7 +1235,7 @@ class TestScraperAgent:
         mock_feed.entries = [mock_entry]
         mock_fetch.return_value = mock_feed
 
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.scraper.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
             mock_config.scraper.max_articles_per_source = 10
             mock_config.scraper.max_article_age_days = 30
@@ -1268,7 +1268,7 @@ class TestScraperAgent:
         mock_feed.entries = [mock_entry]
         mock_fetch.return_value = mock_feed
 
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.scraper.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
             mock_config.scraper.max_articles_per_source = 10
             mock_config.scraper.max_article_age_days = 30
@@ -1305,7 +1305,7 @@ class TestScraperAgent:
         mock_feed.entries = [mock_entry]
         mock_fetch.return_value = mock_feed
 
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.scraper.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
             mock_config.scraper.max_articles_per_source = 10
             mock_config.scraper.max_article_age_days = 30
@@ -1343,7 +1343,7 @@ class TestScraperAgent:
         mock_feed.entries = [mock_entry]
         mock_fetch.return_value = mock_feed
 
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.scraper.config") as mock_config:
             mock_config.scraper.rss_feeds = ["https://test.com/feed"]
             mock_config.scraper.max_articles_per_source = 10
             mock_config.scraper.max_article_age_days = 30
@@ -1366,7 +1366,7 @@ class TestContentGeneratorAgent:
 
     def test_content_generator_init(self):
         """Test ContentGeneratorAgent initialization"""
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.content.config") as mock_config:
             mock_config.content.output_dir = "/tmp/test_output"
 
             generator = ContentGeneratorAgent()
@@ -1375,7 +1375,7 @@ class TestContentGeneratorAgent:
 
     def test_generate_frontmatter(self):
         """Test frontmatter generation"""
-        with patch("airopa_automation.agents.config") as mock_config:
+        with patch("airopa_automation.agents.content.config") as mock_config:
             mock_config.content.output_dir = "/tmp/test_output"
             mock_config.content.default_author = "Test Author"
             mock_config.content.default_cover_image = "/test.jpg"
